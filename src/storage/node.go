@@ -95,3 +95,15 @@ func (node Node) getVal(idx uint16) []byte {
 func (node Node) nbytes() uint16 {
 	return node.kvPos(node.nkeys())
 }
+
+func nodeLookupLE(node Node, key []byte) uint16 {
+	index, found := binarySearch(node, key)
+	if found {
+		return uint16(index)
+	}
+
+	if index > 0 {
+		return uint16(index - 1)
+	}
+	return 0
+}
