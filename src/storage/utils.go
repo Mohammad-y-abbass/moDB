@@ -1,8 +1,6 @@
 package storage
 
-import (
-	"bytes"
-)
+import "bytes"
 
 func binarySearch(node Node, target []byte) (int, bool) {
 	low := 0
@@ -19,4 +17,16 @@ func binarySearch(node Node, target []byte) (int, bool) {
 		}
 	}
 	return low, false // Not found, but 'low' is the insertion point!
+}
+
+func nodeLookupLE(node Node, key []byte) uint16 {
+	index, found := binarySearch(node, key)
+	if found {
+		return uint16(index)
+	}
+
+	if index > 0 {
+		return uint16(index - 1)
+	}
+	return 0
 }

@@ -96,16 +96,53 @@ func (node Node) nbytes() uint16 {
 	return node.kvPos(node.nkeys())
 }
 
-func nodeLookupLE(node Node, key []byte) uint16 {
-	index, found := binarySearch(node, key)
-	if found {
-		return uint16(index)
-	}
 
-	if index > 0 {
-		return uint16(index - 1)
-	}
-	return 0
+func leafInsert(
+	new Node, old Node, idx uint16,
+	key []byte, val []byte,
+) {
+	new.setHeader(LEAF_NODE, old.nkeys()+1)
+	nodeAppendRange(new, old, 0, 0, idx)
+	nodeAppendKV(new, idx, 0, key, val)
+	nodeAppendRange(new, old, idx+1, idx, old.nkeys()-idx)
 }
 
+func nodeAppendRange(
+	new Node, old Node,
+	dstNew uint16, srcOld uint16, n uint16,
+) {
+	helpers.Assert(srcOld+n <= old.nkeys(), "Out of bounds")
+	helpers.Assert(dstNew+n <= new.nkeys(), "Out of bounds")
+	if n == 0 {
+		return
+	}
+	// pointers
+	for i := range n {
+		new.setPtr(dstNew+i, old.getPtr(srcOld+i))
+	}
+	// offsets
+	dstBegin := new.getOffset(dstNew)
+	srcBegin := old.getOffset(srcOld)
+	for i := range n {
+		offset := dstBegin + old.getOffset(srcOld+i) - srcBegin
+		new.setOffset(dstNew+i, offset)
+	}
+	// KVs
+	begin := old.kvPos(srcOld)
+	end := old.kvPos(srcOld + n)
+	copy(new.data[new.kvPos(dstNew):], old.data[begin:end])
+}
 
+// copy a KV into the position
+func nodeAppendKV(new Node, idx uint16, ptr uint64, key []byte, val []byte) {
+	// ptrs
+	new.setPtr(idx, ptr)
+	// KVs
+	pos := new.kvPos(idx)
+	binary.LittleEndian.PutUint16(new.data[pos+0:], uint16(len(key)))
+	binary.LittleEndian.PutUint16(new.data[pos+2:], uint16(len(val)))
+	copy(new.data[pos+4:], key)
+	copy(new.data[pos+4+uint16(len(key)):], val)
+	// the offset of the next key
+	new.setOffset(idx+1, new.getOffset(idx)+4+uint16((len(key)+len(val))))
+}
