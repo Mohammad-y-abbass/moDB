@@ -1,6 +1,8 @@
 package storage
 
-import "bytes"
+import (
+	"bytes"
+)
 
 func binarySearch(node Node, target []byte) (int, bool) {
 	low := 0
