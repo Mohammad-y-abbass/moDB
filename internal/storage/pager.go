@@ -10,8 +10,7 @@ const (
 )
 
 type Pager struct {
-	file       *os.File
-	pageNumber int
+	file *os.File
 }
 
 func NewPager(fileName string) (*Pager, error) {
