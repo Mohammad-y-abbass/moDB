@@ -27,8 +27,12 @@ func (p *Pager) ReadPage(pageID uint32) ([]byte, error) {
 	data := make([]byte, PAGE_SIZE)
 	offset := int64(pageID) * int64(PAGE_SIZE)
 
-	_, err := p.file.ReadAt(data, offset)
+	n, err := p.file.ReadAt(data, offset)
+
 	if err != nil {
+		if err.Error() == "EOF" || n < PAGE_SIZE {
+			return data, nil
+		}
 		return nil, fmt.Errorf("failed to read page %d: %w", pageID, err)
 	}
 
@@ -57,6 +61,13 @@ func (p *Pager) TotalPages() uint32 {
 	return uint32(info.Size() / int64(PAGE_SIZE))
 }
 
+// Sync ensures data is physically written to the disk hardware
+func (p *Pager) Sync() error {
+	return p.file.Sync()
+}
+
 func (p *Pager) Close() error {
+	// ensure no data loss when closing the file
+	p.Sync()
 	return p.file.Close()
 }
