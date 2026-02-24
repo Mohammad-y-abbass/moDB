@@ -1,7 +1,10 @@
 package executor
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -29,6 +32,70 @@ func New(engine *storage.Engine) *Executor {
 
 func (e *Executor) RegisterTable(name string, table *storage.Table) {
 	e.Tables[name] = table
+}
+
+func (e *Executor) SaveTableSchema(name string, schema *storage.Schema) error {
+	if e.Engine.ActiveDB == "" {
+		return fmt.Errorf("no active database")
+	}
+	schemaPath := filepath.Join(e.Engine.BaseDir, e.Engine.ActiveDB, name+".json")
+	file, err := os.Create(schemaPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	return json.NewEncoder(file).Encode(schema)
+}
+
+func (e *Executor) ReloadTables() error {
+	if e.Engine.ActiveDB == "" {
+		e.Tables = make(map[string]*storage.Table)
+		return nil
+	}
+
+	dbDir := filepath.Join(e.Engine.BaseDir, e.Engine.ActiveDB)
+	files, err := os.ReadDir(dbDir)
+	if err != nil {
+		return err
+	}
+
+	newTables := make(map[string]*storage.Table)
+	for _, f := range files {
+		if !f.IsDir() && filepath.Ext(f.Name()) == ".json" {
+			tableName := strings.TrimSuffix(f.Name(), ".json")
+			schemaPath := filepath.Join(dbDir, f.Name())
+			dbPath := filepath.Join(dbDir, tableName+".db")
+
+			// Check if .db file exists
+			if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+				continue
+			}
+
+			// Load Schema
+			schemaFile, err := os.Open(schemaPath)
+			if err != nil {
+				continue
+			}
+			var schema storage.Schema
+			err = json.NewDecoder(schemaFile).Decode(&schema)
+			schemaFile.Close()
+			if err != nil {
+				continue
+			}
+
+			// Initialize Table
+			pager, err := storage.NewPager(dbPath)
+			if err != nil {
+				continue
+			}
+			table := storage.NewTable(pager, &schema)
+			newTables[tableName] = table
+		}
+	}
+
+	e.Tables = newTables
+	return nil
 }
 
 func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
@@ -95,7 +162,36 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 			return ResultSet{}, fmt.Errorf("table not found: %s", n.TableName)
 		}
 
-		convertedValues, err := e.convertValues(n.Values, table.Schema)
+		var convertedValues []interface{}
+		var err error
+
+		if len(n.Columns) > 0 {
+			// Handle explicitly named columns: INSERT INTO table (c1, c2) VALUES (v1, v2)
+			if len(n.Columns) != len(n.Values) {
+				return ResultSet{}, fmt.Errorf("column count (%d) does not match value count (%d)", len(n.Columns), len(n.Values))
+			}
+
+			// Map values to columns
+			valMap := make(map[string]string)
+			for i, colName := range n.Columns {
+				valMap[colName] = n.Values[i]
+			}
+
+			// Build the full row based on schema
+			fullValues := make([]string, len(table.Schema.Columns))
+			for i, col := range table.Schema.Columns {
+				if val, exists := valMap[col.Name]; exists {
+					fullValues[i] = val
+				} else {
+					fullValues[i] = "NULL"
+				}
+			}
+			convertedValues, err = e.convertValues(fullValues, table.Schema)
+		} else {
+			// Handle positional insert: INSERT INTO table VALUES (v1, v2, v3)
+			convertedValues, err = e.convertValues(n.Values, table.Schema)
+		}
+
 		if err != nil {
 			return ResultSet{}, err
 		}
@@ -223,6 +319,11 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 		if err != nil {
 			return ResultSet{}, err
 		}
+		// Refresh the table list for the new database
+		err = e.ReloadTables()
+		if err != nil {
+			return ResultSet{}, fmt.Errorf("failed to reload tables: %w", err)
+		}
 		return ResultSet{}, nil
 
 	case *planner.CreateTableNode:
@@ -270,6 +371,12 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 		}
 		table := storage.NewTable(pager, schema)
 		e.RegisterTable(n.TableName, table)
+
+		// Persist Schema to disk
+		err = e.SaveTableSchema(n.TableName, schema)
+		if err != nil {
+			return ResultSet{}, fmt.Errorf("failed to save schema: %w", err)
+		}
 
 		return ResultSet{}, nil
 	}

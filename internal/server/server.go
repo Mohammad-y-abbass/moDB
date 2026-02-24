@@ -19,23 +19,14 @@ var (
 )
 
 func Start() {
-	// Initialize Storage Enginge
+	// Initialize Storage Engine
 	engine := storage.NewEngine("./data")
-	engine.CreateDatabase("testdb")
-	engine.UseDatabase("testdb")
-
-	// Setup a sample users table
-	schema := storage.NewSchema([]storage.Column{
-		{Name: "id", Type: storage.TypeInt32},
-		{Name: "name", Type: storage.TypeFixedText, Size: 32},
-		{Name: "age", Type: storage.TypeInt32},
-	})
-
-	pager, _ := storage.NewPager("./data/testdb/users.db")
-	table := storage.NewTable(pager, schema)
 
 	exec = executor.New(engine)
-	exec.RegisterTable("users", table)
+	err := exec.ReloadTables()
+	if err != nil {
+		fmt.Println("Warning: Could not reload tables:", err)
+	}
 
 	plan = planner.New()
 
