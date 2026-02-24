@@ -4,12 +4,41 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"strings"
 
+	"github.com/Mohammad-y-abbass/moDB/internal/executor"
 	"github.com/Mohammad-y-abbass/moDB/internal/lexer"
 	"github.com/Mohammad-y-abbass/moDB/internal/parser"
+	"github.com/Mohammad-y-abbass/moDB/internal/planner"
+	"github.com/Mohammad-y-abbass/moDB/internal/storage"
+)
+
+var (
+	exec *executor.Executor
+	plan *planner.Planner
 )
 
 func Start() {
+	// Initialize Storage Enginge
+	engine := storage.NewEngine("./data")
+	engine.CreateDatabase("testdb")
+	engine.UseDatabase("testdb")
+
+	// Setup a sample users table
+	schema := storage.NewSchema([]storage.Column{
+		{Name: "id", Type: storage.TypeInt32},
+		{Name: "name", Type: storage.TypeFixedText, Size: 32},
+		{Name: "age", Type: storage.TypeInt32},
+	})
+
+	pager, _ := storage.NewPager("./data/testdb/users.db")
+	table := storage.NewTable(pager, schema)
+
+	exec = executor.New(engine)
+	exec.RegisterTable("users", table)
+
+	plan = planner.New()
+
 	listener, err := net.Listen("tcp", ":3003")
 	if err != nil {
 		fmt.Println("Could not start server: ", err)
@@ -19,7 +48,6 @@ func Start() {
 	fmt.Println("Server is running on port 3003")
 
 	for {
-		// Wait for a client to connect
 		conn, err := listener.Accept()
 		if err != nil {
 			fmt.Println("Accept error: ", err)
@@ -32,6 +60,7 @@ func Start() {
 
 const (
 	colorRed   = "\033[31m"
+	colorGreen = "\033[32m"
 	colorReset = "\033[0m"
 )
 
@@ -42,29 +71,38 @@ func handleConnection(conn net.Conn) {
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		query := scanner.Text()
-		fmt.Printf("Received query: %q\n", query) // Logs what you typed
+		if strings.TrimSpace(query) == "" {
+			continue
+		}
+		fmt.Printf("Received query: %q\n", query)
 
-		// Create lexer from query string
 		l := lexer.New(query)
-
-		// Create parser from lexer
 		p := parser.New(l)
-
-		// Parse the program
 		program := p.ParseProgram()
 
-		// Check for parsing errors
 		if len(p.Errors()) > 0 {
 			errorMsg := p.GetErrorMessage()
-			fmt.Printf("%sParsing error:%s\n%s\n", colorRed, colorReset, errorMsg)
+			fmt.Printf("%sParsing error:%s %s\n", colorRed, colorReset, errorMsg)
 			conn.Write([]byte(colorRed + errorMsg + colorReset + "\n"))
-		} else if program == nil || len(program.Statements) == 0 {
-			fmt.Printf("%sError: no statements parsed%s\n", colorRed, colorReset)
-			conn.Write([]byte(colorRed + "Error: no statements parsed" + colorReset + "\n"))
-		} else {
-			response := p.FormatAST(program)
-			fmt.Printf("Responding:\n%s\n", response)
-			conn.Write([]byte(response + "\n"))
+			continue
+		}
+
+		for _, stmt := range program.Statements {
+			pNode := plan.GeneratePlan(stmt)
+			results, err := exec.Execute(pNode)
+			if err != nil {
+				errMsg := "Execution error: " + err.Error()
+				fmt.Printf("%s%s%s\n", colorRed, errMsg, colorReset)
+				conn.Write([]byte(colorRed + errMsg + colorReset + "\n"))
+				continue
+			}
+
+			if len(results.Columns) == 0 && len(results.Rows) == 0 {
+				conn.Write([]byte(colorGreen + "Success (Action completed)" + colorReset + "\n"))
+			} else {
+				res := executor.FormatResultSet(results)
+				conn.Write([]byte(res + "\n"))
+			}
 		}
 	}
 	fmt.Printf("--- Connection closed ---\n")

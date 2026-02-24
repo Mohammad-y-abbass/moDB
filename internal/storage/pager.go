@@ -30,10 +30,15 @@ func (p *Pager) ReadPage(pageID uint32) ([]byte, error) {
 	n, err := p.file.ReadAt(data, offset)
 
 	if err != nil {
-		if err.Error() == "EOF" || n < PAGE_SIZE {
+		if err.Error() == "EOF" {
 			return data, nil
 		}
 		return nil, fmt.Errorf("failed to read page %d: %w", pageID, err)
+	}
+
+	if n < PAGE_SIZE {
+		// Possibly hitting EOF but not getting EOF error, or partial read
+		return data, nil
 	}
 
 	return data, nil

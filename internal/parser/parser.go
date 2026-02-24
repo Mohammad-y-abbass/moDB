@@ -66,6 +66,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		p.addError(fmt.Sprintf("Illegal character '%s' at line %d, column %d",
 			p.currentToken.Value, p.currentToken.Line, p.currentToken.Col))
 		return nil
+	case lexer.SEMICOLON:
+		return nil
 	case lexer.EOF_TOKEN:
 		return nil
 	default:

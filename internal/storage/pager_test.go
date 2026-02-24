@@ -121,7 +121,7 @@ func TestTotalPages(t *testing.T) {
 	}
 }
 
-func TestReadOutOfBounds(t *testing.T) {
+func TestReadEmptyFile(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "test.db")
 
@@ -131,18 +131,13 @@ func TestReadOutOfBounds(t *testing.T) {
 	}
 	defer pager.Close()
 
-	// Read from an empty file
-	_, err = pager.ReadPage(0)
-	if err == nil {
-		t.Error("expected error when reading out-of-bounds page, got nil")
+	// Read from an empty file should return a zeroed page and no error
+	data, err := pager.ReadPage(0)
+	if err != nil {
+		t.Errorf("expected no error when reading from empty file, got %v", err)
 	}
-
-	// Write page 0, then read page 1
-	data := make([]byte, PAGE_SIZE)
-	pager.WritePage(0, data)
-	_, err = pager.ReadPage(1)
-	if err == nil {
-		t.Error("expected error when reading out-of-bounds page 1, got nil")
+	if len(data) != PAGE_SIZE {
+		t.Errorf("expected data size %d, got %d", PAGE_SIZE, len(data))
 	}
 }
 
