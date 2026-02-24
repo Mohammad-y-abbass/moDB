@@ -8,6 +8,8 @@ import (
 // Row represents a single record in memory before/after serialization
 type Row struct {
 	Values []interface{} // Can hold int32, uint32, or string
+	PageID uint32
+	SlotID uint16
 }
 
 // Serialize converts Go values into a fixed-length byte slice based on the Schema

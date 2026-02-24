@@ -60,6 +60,18 @@ type CreateTableNode struct {
 
 func (n *CreateTableNode) PlanNode() {}
 
+type CreateDatabaseNode struct {
+	DatabaseName string
+}
+
+func (n *CreateDatabaseNode) PlanNode() {}
+
+type UseDatabaseNode struct {
+	DatabaseName string
+}
+
+func (n *UseDatabaseNode) PlanNode() {}
+
 type Planner struct{}
 
 func New() *Planner {
@@ -68,6 +80,14 @@ func New() *Planner {
 
 func (p *Planner) GeneratePlan(stmt ast.Statement) PlanNode {
 	switch s := stmt.(type) {
+	case *ast.CreateDatabaseStatement:
+		return &CreateDatabaseNode{
+			DatabaseName: s.DatabaseName,
+		}
+	case *ast.UseDatabaseStatement:
+		return &UseDatabaseNode{
+			DatabaseName: s.DatabaseName,
+		}
 	case *ast.CreateTableStatement:
 		return &CreateTableNode{
 			TableName: s.Table,

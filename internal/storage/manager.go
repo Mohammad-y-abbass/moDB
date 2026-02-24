@@ -84,13 +84,57 @@ func (t *Table) SelectAll() ([]Row, error) {
 
 		for slotID := uint16(0); slotID < numSlots; slotID++ {
 			rowData := page.GetRow(slotID)
+			// Handle potential gaps from deletions
+			if len(rowData) == 0 {
+				continue
+			}
 			row, err := t.Schema.Deserialize(rowData)
 			if err != nil {
 				return nil, err
 			}
+			row.PageID = i
+			row.SlotID = slotID
 			results = append(results, row)
 		}
 	}
 
 	return results, nil
+}
+
+// Update modifies an existing row identified by its physical address
+func (t *Table) Update(pageID uint32, slotID uint16, newValues []interface{}) error {
+	row := Row{Values: newValues}
+	rowData, err := t.Schema.Serialize(row)
+	if err != nil {
+		return err
+	}
+
+	pageData, err := t.Pager.ReadPage(pageID)
+	if err != nil {
+		return err
+	}
+	page := NewSlottedPage(pageData)
+
+	err = page.Update(slotID, rowData)
+	if err != nil {
+		return err
+	}
+
+	return t.Pager.WritePage(pageID, page.data)
+}
+
+// Delete removes a row identified by its physical address
+func (t *Table) Delete(pageID uint32, slotID uint16) error {
+	pageData, err := t.Pager.ReadPage(pageID)
+	if err != nil {
+		return err
+	}
+	page := NewSlottedPage(pageData)
+
+	err = page.Delete(slotID)
+	if err != nil {
+		return err
+	}
+
+	return t.Pager.WritePage(pageID, page.data)
 }

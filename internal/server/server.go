@@ -114,7 +114,11 @@ func handleConnection(conn net.Conn) {
 					}
 
 					if len(results.Columns) == 0 && len(results.Rows) == 0 {
-						conn.Write([]byte(colorGreen + "Success (Action completed)" + colorReset + "\n"))
+						msg := "Success (Action completed)"
+						if results.Message != "" {
+							msg = results.Message
+						}
+						conn.Write([]byte(colorGreen + msg + colorReset + "\n"))
 					} else {
 						res := executor.FormatResultSet(results)
 						conn.Write([]byte(res + "\n"))

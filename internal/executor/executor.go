@@ -12,6 +12,7 @@ import (
 type ResultSet struct {
 	Columns []string
 	Rows    []storage.Row
+	Message string
 }
 
 type Executor struct {
@@ -126,16 +127,103 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 		return ResultSet{}, nil
 
 	case *planner.DeleteNode:
-		if _, ok := e.Tables[n.TableName]; !ok {
+		table, ok := e.Tables[n.TableName]
+		if !ok {
 			return ResultSet{}, fmt.Errorf("table not found: %s", n.TableName)
 		}
-		return ResultSet{}, fmt.Errorf("DELETE not fully implemented")
+
+		rows, err := table.SelectAll()
+		if err != nil {
+			return ResultSet{}, err
+		}
+
+		deletedCount := 0
+		for _, row := range rows {
+			match := true
+			if n.Where != nil {
+				match, err = e.evaluateCondition(row, table.Schema, n.Where.Left, n.Where.Op, n.Where.Right)
+				if err != nil {
+					return ResultSet{}, err
+				}
+			}
+
+			if match {
+				err = table.Delete(row.PageID, row.SlotID)
+				if err != nil {
+					return ResultSet{}, err
+				}
+				deletedCount++
+			}
+		}
+		return ResultSet{Message: fmt.Sprintf("Deleted %d rows", deletedCount)}, nil
 
 	case *planner.UpdateNode:
-		if _, ok := e.Tables[n.TableName]; !ok {
+		table, ok := e.Tables[n.TableName]
+		if !ok {
 			return ResultSet{}, fmt.Errorf("table not found: %s", n.TableName)
 		}
-		return ResultSet{}, fmt.Errorf("UPDATE not fully implemented")
+
+		rows, err := table.SelectAll()
+		if err != nil {
+			return ResultSet{}, err
+		}
+
+		updatedCount := 0
+		for _, row := range rows {
+			match := true
+			if n.Where != nil {
+				match, err = e.evaluateCondition(row, table.Schema, n.Where.Left, n.Where.Op, n.Where.Right)
+				if err != nil {
+					return ResultSet{}, err
+				}
+			}
+
+			if match {
+				newValues := make([]interface{}, len(row.Values))
+				copy(newValues, row.Values)
+
+				for colName, newValStr := range n.Sets {
+					colIdx := -1
+					for i, col := range table.Schema.Columns {
+						if col.Name == colName {
+							colIdx = i
+							break
+						}
+					}
+					if colIdx == -1 {
+						return ResultSet{}, fmt.Errorf("column not found in SET: %s", colName)
+					}
+
+					// Convert the string value from the query to the correct Go type for the column
+					converted, err := e.convertSingleValue(newValStr, table.Schema.Columns[colIdx])
+					if err != nil {
+						return ResultSet{}, err
+					}
+					newValues[colIdx] = converted
+				}
+
+				err = table.Update(row.PageID, row.SlotID, newValues)
+				if err != nil {
+					return ResultSet{}, err
+				}
+				updatedCount++
+			}
+		}
+		return ResultSet{Message: fmt.Sprintf("Updated %d rows", updatedCount)}, nil
+
+	case *planner.CreateDatabaseNode:
+		err := e.Engine.CreateDatabase(n.DatabaseName)
+		if err != nil {
+			return ResultSet{}, err
+		}
+		return ResultSet{}, nil
+
+	case *planner.UseDatabaseNode:
+		err := e.Engine.UseDatabase(n.DatabaseName)
+		if err != nil {
+			return ResultSet{}, err
+		}
+		return ResultSet{}, nil
 
 	case *planner.CreateTableNode:
 		if _, ok := e.Tables[n.TableName]; ok {
@@ -171,8 +259,11 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 		}
 
 		schema := storage.NewSchema(storageCols)
-		// For now, we use a simple path. In a real DB, the engine would manage this.
-		dbPath := fmt.Sprintf("./data/testdb/%s.db", n.TableName)
+
+		if e.Engine.ActiveDB == "" {
+			return ResultSet{}, fmt.Errorf("no database selected")
+		}
+		dbPath := fmt.Sprintf("%s/%s/%s.db", e.Engine.BaseDir, e.Engine.ActiveDB, n.TableName)
 		pager, err := storage.NewPager(dbPath)
 		if err != nil {
 			return ResultSet{}, err
@@ -199,28 +290,44 @@ func (e *Executor) getTableFromPlan(plan planner.PlanNode) *storage.Table {
 }
 
 func (e *Executor) evaluateFilter(row storage.Row, schema *storage.Schema, filter *planner.FilterNode) (bool, error) {
+	return e.evaluateCondition(row, schema, filter.Left, filter.Op, filter.Right)
+}
+
+func (e *Executor) evaluateCondition(row storage.Row, schema *storage.Schema, left, op, right string) (bool, error) {
 	colIdx := -1
 	for i, col := range schema.Columns {
-		if col.Name == filter.Left {
+		if col.Name == left {
 			colIdx = i
 			break
 		}
 	}
 
 	if colIdx == -1 {
-		return false, fmt.Errorf("column not found: %s", filter.Left)
+		return false, fmt.Errorf("column not found: %s", left)
 	}
 
 	val := row.Values[colIdx]
 
+	if val == nil {
+		if strings.ToUpper(right) == "NULL" {
+			if op == "=" {
+				return true, nil
+			}
+			if op == "!=" {
+				return false, nil
+			}
+		}
+		return false, nil
+	}
+
 	switch v := val.(type) {
 	case int32:
-		target, err := strconv.Atoi(filter.Right)
+		target, err := strconv.Atoi(right)
 		if err != nil {
-			return false, fmt.Errorf("invalid value for int32: %s", filter.Right)
+			return false, fmt.Errorf("invalid value for int32: %s", right)
 		}
 		rhs := int32(target)
-		switch filter.Op {
+		switch op {
 		case "=":
 			return v == rhs, nil
 		case "!=":
@@ -235,12 +342,12 @@ func (e *Executor) evaluateFilter(row storage.Row, schema *storage.Schema, filte
 			return v <= rhs, nil
 		}
 	case uint32:
-		target, err := strconv.ParseUint(filter.Right, 10, 32)
+		target, err := strconv.ParseUint(right, 10, 32)
 		if err != nil {
-			return false, fmt.Errorf("invalid value for uint32: %s", filter.Right)
+			return false, fmt.Errorf("invalid value for uint32: %s", right)
 		}
 		rhs := uint32(target)
-		switch filter.Op {
+		switch op {
 		case "=":
 			return v == rhs, nil
 		case "!=":
@@ -255,8 +362,8 @@ func (e *Executor) evaluateFilter(row storage.Row, schema *storage.Schema, filte
 			return v <= rhs, nil
 		}
 	case string:
-		rhs := filter.Right
-		switch filter.Op {
+		rhs := right
+		switch op {
 		case "=":
 			return v == rhs, nil
 		case "!=":
@@ -309,35 +416,41 @@ func (e *Executor) convertValues(values []string, schema *storage.Schema) ([]int
 
 	converted := make([]interface{}, len(values))
 	for i, col := range schema.Columns {
-		val := values[i]
-
-		// Handle NULL (if we had a NULL token in values, but for now we check string "NULL")
-		if strings.ToUpper(val) == "NULL" {
-			if !col.IsNullable {
-				return nil, fmt.Errorf("column %s cannot be NULL", col.Name)
-			}
-			converted[i] = nil
-			continue
+		val, err := e.convertSingleValue(values[i], col)
+		if err != nil {
+			return nil, err
 		}
-
-		switch col.Type {
-		case storage.TypeInt32:
-			v, err := strconv.Atoi(val)
-			if err != nil {
-				return nil, fmt.Errorf("invalid value for column %s (INT): %s", col.Name, val)
-			}
-			converted[i] = int32(v)
-		case storage.TypeUint32:
-			v, err := strconv.ParseUint(val, 10, 32)
-			if err != nil {
-				return nil, fmt.Errorf("invalid value for column %s (UINT): %s", col.Name, val)
-			}
-			converted[i] = uint32(v)
-		case storage.TypeFixedText:
-			converted[i] = val
-		}
+		converted[i] = val
 	}
 	return converted, nil
+}
+
+func (e *Executor) convertSingleValue(val string, col storage.Column) (interface{}, error) {
+	// Handle NULL (if we had a NULL token in values, but for now we check string "NULL")
+	if strings.ToUpper(val) == "NULL" {
+		if !col.IsNullable {
+			return nil, fmt.Errorf("column %s cannot be NULL", col.Name)
+		}
+		return nil, nil
+	}
+
+	switch col.Type {
+	case storage.TypeInt32:
+		v, err := strconv.Atoi(val)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value for column %s (INT): %s", col.Name, val)
+		}
+		return int32(v), nil
+	case storage.TypeUint32:
+		v, err := strconv.ParseUint(val, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value for column %s (UINT): %s", col.Name, val)
+		}
+		return uint32(v), nil
+	case storage.TypeFixedText:
+		return val, nil
+	}
+	return nil, fmt.Errorf("unknown column type for conversion")
 }
 
 func FormatResultSet(res ResultSet) string {

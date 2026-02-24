@@ -64,7 +64,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.DELETE_TOKEN:
 		return p.parseDeleteStatement()
 	case lexer.CREATE_TOKEN:
-		return p.parseCreateTableStatement()
+		return p.parseCreateStatement()
+	case lexer.USE_TOKEN:
+		return p.parseUseStatement()
 	case lexer.ILLEGAL:
 		p.addError(fmt.Sprintf("Illegal character '%s' at line %d, column %d",
 			p.currentToken.Value, p.currentToken.Line, p.currentToken.Col))
@@ -196,7 +198,7 @@ func (p *Parser) parseUpdateStatement() *ast.UpdateStatement {
 		p.nextToken()
 		p.nextToken() // Move to val
 
-		if p.currentToken.Type != lexer.IDENTIFIER && p.currentToken.Type != lexer.NUMBER {
+		if p.currentToken.Type != lexer.IDENTIFIER && p.currentToken.Type != lexer.NUMBER && p.currentToken.Type != lexer.STRING {
 			p.addError("Expected value in SET")
 			return nil
 		}
@@ -243,14 +245,55 @@ func (p *Parser) parseDeleteStatement() *ast.DeleteStatement {
 	return stmt
 }
 
+func (p *Parser) parseCreateStatement() ast.Statement {
+	if p.peekToken.Type == lexer.DATABASE_TOKEN {
+		return p.parseCreateDatabaseStatement()
+	} else if p.peekToken.Type == lexer.TABLE_TOKEN {
+		return p.parseCreateTableStatement()
+	} else {
+		p.addError(fmt.Sprintf("Expected DATABASE or TABLE after CREATE at line %d, column %d, but got '%s'",
+			p.peekToken.Line, p.peekToken.Col, p.peekToken.Value))
+		return nil
+	}
+}
+
+func (p *Parser) parseCreateDatabaseStatement() *ast.CreateDatabaseStatement {
+	stmt := &ast.CreateDatabaseStatement{Token: p.currentToken}
+
+	p.nextToken() // Move to DATABASE
+	if p.peekToken.Type != lexer.IDENTIFIER {
+		p.addError(fmt.Sprintf("Expected database name after CREATE DATABASE at line %d, column %d, but got '%s'",
+			p.peekToken.Line, p.peekToken.Col, p.peekToken.Value))
+		return nil
+	}
+	p.nextToken() // Move to database name
+	stmt.DatabaseName = p.currentToken.Value
+	return stmt
+}
+
+func (p *Parser) parseUseStatement() *ast.UseDatabaseStatement {
+	stmt := &ast.UseDatabaseStatement{Token: p.currentToken}
+
+	if p.peekToken.Type != lexer.IDENTIFIER {
+		p.addError(fmt.Sprintf("Expected database name after USE at line %d, column %d, but got '%s'",
+			p.peekToken.Line, p.peekToken.Col, p.peekToken.Value))
+		return nil
+	}
+	p.nextToken() // Move to database name
+	stmt.DatabaseName = p.currentToken.Value
+	return stmt
+}
+
 func (p *Parser) parseCreateTableStatement() *ast.CreateTableStatement {
 	stmt := &ast.CreateTableStatement{Token: p.currentToken}
 
-	if p.peekToken.Type != lexer.TABLE_TOKEN {
-		p.addError("Expected TABLE after CREATE")
+	p.nextToken() // Move to TABLE
+
+	if p.currentToken.Type != lexer.TABLE_TOKEN {
+		p.addError(fmt.Sprintf("Expected TABLE after CREATE at line %d, column %d, but got '%s'",
+			p.currentToken.Line, p.currentToken.Col, p.currentToken.Value))
 		return nil
 	}
-	p.nextToken() // Move to TABLE
 
 	if p.peekToken.Type != lexer.IDENTIFIER {
 		p.addError("Expected table name after CREATE TABLE")
@@ -363,7 +406,7 @@ func (p *Parser) parseWhereClause() *ast.WhereClause {
 	where.Op = p.currentToken.Value
 
 	p.nextToken()
-	if p.currentToken.Type != lexer.IDENTIFIER && p.currentToken.Type != lexer.NUMBER {
+	if p.currentToken.Type != lexer.IDENTIFIER && p.currentToken.Type != lexer.NUMBER && p.currentToken.Type != lexer.STRING {
 		p.addError(fmt.Sprintf("Expected value in WHERE clause, got %s", p.currentToken.Value))
 		return nil
 	}
@@ -376,10 +419,10 @@ func (p *Parser) parseCommaSeparatedList(endToken lexer.TokenType) []string {
 	var list []string
 
 	for {
-		if p.currentToken.Type == lexer.IDENTIFIER || p.currentToken.Type == lexer.NUMBER {
+		if p.currentToken.Type == lexer.IDENTIFIER || p.currentToken.Type == lexer.NUMBER || p.currentToken.Type == lexer.STRING {
 			list = append(list, p.currentToken.Value)
 		} else {
-			p.addError(fmt.Sprintf("Expected identifier or number, got %s", p.currentToken.Value))
+			p.addError(fmt.Sprintf("Expected identifier, number, or string, got %s", p.currentToken.Value))
 			return nil
 		}
 
@@ -531,6 +574,18 @@ func (p *Parser) formatStatement(stmt ast.Statement, indent int) string {
 		} else {
 			builder.WriteString("\n")
 		}
+		builder.WriteString(indentStr + "}")
+		return builder.String()
+	case *ast.CreateDatabaseStatement:
+		var builder strings.Builder
+		builder.WriteString(indentStr + "CreateDatabaseStatement {\n")
+		builder.WriteString(indentStr + "  DatabaseName: \"" + s.DatabaseName + "\"\n")
+		builder.WriteString(indentStr + "}")
+		return builder.String()
+	case *ast.UseDatabaseStatement:
+		var builder strings.Builder
+		builder.WriteString(indentStr + "UseDatabaseStatement {\n")
+		builder.WriteString(indentStr + "  DatabaseName: \"" + s.DatabaseName + "\"\n")
 		builder.WriteString(indentStr + "}")
 		return builder.String()
 	case *ast.CreateTableStatement:

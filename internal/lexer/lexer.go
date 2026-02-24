@@ -85,6 +85,10 @@ func (l *Lexer) ReadIdentifier() Token {
 		return Token{Type: SET_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "CREATE":
 		return Token{Type: CREATE_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "DATABASE":
+		return Token{Type: DATABASE_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "USE":
+		return Token{Type: USE_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "TABLE":
 		return Token{Type: TABLE_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "INT", "INTEGER":
@@ -138,6 +142,31 @@ func (l *Lexer) readNumber() Token {
 	}
 }
 
+func (l *Lexer) readString() Token {
+	startCol := l.column
+	l.advance() // Skip the opening quote
+	start := l.cursor
+
+	for l.cursor < len(l.input) && l.peek() != '\'' {
+		l.advance()
+	}
+
+	value := l.input[start:l.cursor]
+
+	if l.cursor >= len(l.input) {
+		return Token{Type: ILLEGAL, Value: value, Line: l.Line, Col: startCol}
+	}
+
+	l.advance() // Skip the closing quote
+
+	return Token{
+		Type:  STRING,
+		Value: value,
+		Line:  l.Line,
+		Col:   startCol,
+	}
+}
+
 func (l *Lexer) NextToken() Token {
 	l.skipWhitespace()
 
@@ -152,6 +181,9 @@ func (l *Lexer) NextToken() Token {
 	}
 	if isDigit(char) || char == '-' {
 		return l.readNumber()
+	}
+	if char == '\'' {
+		return l.readString()
 	}
 
 	switch char {

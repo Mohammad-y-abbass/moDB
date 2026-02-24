@@ -9,18 +9,18 @@ const (
 )
 
 type Column struct {
-	Name         string
-	Type         DataType
-	Size         uint32
-	IsNullable   bool
-	IsUnique     bool
-	IsPrimaryKey bool
+	Name         string   `json:"name"`
+	Type         DataType `json:"type"`
+	Size         uint32   `json:"size"`
+	IsNullable   bool     `json:"is_nullable"`
+	IsUnique     bool     `json:"is_unique"`
+	IsPrimaryKey bool     `json:"is_primary_key"`
 }
 
 type Schema struct {
-	Columns    []Column
-	TotalSize  uint32 // Sum of all column sizes + bitmap size
-	BitmapSize uint32 // Number of bytes needed for null bitmap
+	Columns    []Column `json:"columns"`
+	TotalSize  uint32   `json:"total_size"`
+	BitmapSize uint32   `json:"bitmap_size"`
 }
 
 func NewSchema(cols []Column) *Schema {

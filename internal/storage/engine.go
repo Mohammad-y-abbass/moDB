@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -17,9 +18,17 @@ func NewEngine(baseDir string) *Engine {
 
 func (e *Engine) CreateDatabase(name string) error {
 	path := filepath.Join(e.BaseDir, name)
-	return os.MkdirAll(path, 0755)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		return fmt.Errorf("database already exists: %s", name)
+	}
+	return os.Mkdir(path, 0755)
 }
 
-func (e *Engine) UseDatabase(name string) {
+func (e *Engine) UseDatabase(name string) error {
+	path := filepath.Join(e.BaseDir, name)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return fmt.Errorf("database does not exist: %s", name)
+	}
 	e.ActiveDB = name
+	return nil
 }

@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 )
 
 const (
@@ -72,4 +73,39 @@ func (p *SlottedPage) GetRow(slotID uint16) []byte {
 	length := binary.LittleEndian.Uint16(p.data[slotEntryPos+2 : slotEntryPos+4])
 
 	return p.data[offset : offset+length]
+}
+
+// Update overwrites an existing slot with new row data.
+// Since we have fixed-length rows, it's a simple copy.
+func (p *SlottedPage) Update(slotID uint16, rowData []byte) error {
+	numSlots := binary.LittleEndian.Uint16(p.data[0:2])
+	if slotID >= numSlots {
+		return errors.New("invalid slot ID")
+	}
+
+	slotEntryPos := HeaderSize + (slotID * SlotSize)
+	offset := binary.LittleEndian.Uint16(p.data[slotEntryPos : slotEntryPos+2])
+	length := binary.LittleEndian.Uint16(p.data[slotEntryPos+2 : slotEntryPos+4])
+
+	if uint16(len(rowData)) != length {
+		return fmt.Errorf("row size mismatch: expected %d, got %d", length, len(rowData))
+	}
+
+	copy(p.data[offset:offset+length], rowData)
+	return nil
+}
+
+// Delete marks a slot as deleted by setting its length and offset to 0.
+// Real compacting would be better, but this is simple for now.
+func (p *SlottedPage) Delete(slotID uint16) error {
+	numSlots := binary.LittleEndian.Uint16(p.data[0:2])
+	if slotID >= numSlots {
+		return errors.New("invalid slot ID")
+	}
+
+	slotEntryPos := HeaderSize + (slotID * SlotSize)
+	// Zero out the slot entry
+	binary.LittleEndian.PutUint16(p.data[slotEntryPos:slotEntryPos+2], 0)
+	binary.LittleEndian.PutUint16(p.data[slotEntryPos+2:slotEntryPos+4], 0)
+	return nil
 }

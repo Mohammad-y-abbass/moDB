@@ -12,10 +12,10 @@ const (
 	VALUES_TOKEN   TokenType = "VALUES"
 	INTO_TOKEN     TokenType = "INTO"
 	SET_TOKEN      TokenType = "SET"
-	USE_TOKEN      TokenType = "USE"
 	CREATE_TOKEN   TokenType = "CREATE"
-	TABLE_TOKEN    TokenType = "TABLE"
 	DATABASE_TOKEN TokenType = "DATABASE"
+	USE_TOKEN      TokenType = "USE"
+	TABLE_TOKEN    TokenType = "TABLE"
 	INT_TOKEN      TokenType = "INT"
 	TEXT_TOKEN     TokenType = "TEXT"
 	NOT_TOKEN      TokenType = "NOT"
@@ -40,6 +40,7 @@ const (
 	LTE            TokenType = "<="
 	LPAREN         TokenType = "("
 	RPAREN         TokenType = ")"
+	STRING         TokenType = "STRING"
 )
 
 type Token struct {
