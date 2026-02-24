@@ -17,10 +17,21 @@ func (s *Schema) Serialize(row Row) ([]byte, error) {
 	}
 
 	data := make([]byte, s.TotalSize)
-	var currentOffset uint32 = 0
+	bitmap := make([]byte, s.BitmapSize)
+	currentOffset := s.BitmapSize
 
 	for i, col := range s.Columns {
 		val := row.Values[i]
+
+		if val == nil {
+			if !col.IsNullable {
+				return nil, fmt.Errorf("column %s is NOT NULL but got nil", col.Name)
+			}
+			// Set the bit in the null bitmap
+			bitmap[i/8] |= (1 << (7 - (i % 8)))
+			currentOffset += col.Size
+			continue
+		}
 
 		switch col.Type {
 		case TypeInt32:
@@ -42,14 +53,14 @@ func (s *Schema) Serialize(row Row) ([]byte, error) {
 			if !ok {
 				return nil, fmt.Errorf("column %s expects string", col.Name)
 			}
-			// Copy string bytes into the fixed-size slot
-			// If string is shorter than Size, the rest remains zeros (padding)
-			// If string is longer, it is truncated
 			copy(data[currentOffset:currentOffset+col.Size], v)
 		}
 
 		currentOffset += col.Size
 	}
+
+	// Prepend the bitmap to the data
+	copy(data[:s.BitmapSize], bitmap)
 
 	return data, nil
 }
@@ -60,10 +71,19 @@ func (s *Schema) Deserialize(data []byte) (Row, error) {
 		return Row{}, fmt.Errorf("data too short for schema")
 	}
 
+	bitmap := data[:s.BitmapSize]
 	values := make([]interface{}, len(s.Columns))
-	var currentOffset uint32 = 0
+	currentOffset := s.BitmapSize
 
 	for i, col := range s.Columns {
+		// Check if null bit is set
+		isNull := (bitmap[i/8] & (1 << (7 - (i % 8)))) != 0
+		if isNull {
+			values[i] = nil
+			currentOffset += col.Size
+			continue
+		}
+
 		switch col.Type {
 		case TypeInt32:
 			v := binary.LittleEndian.Uint32(data[currentOffset : currentOffset+4])
@@ -74,10 +94,7 @@ func (s *Schema) Deserialize(data []byte) (Row, error) {
 			values[i] = v
 
 		case TypeFixedText:
-			// Read the fixed size and trim any trailing null bytes (zeros)
-			// This makes it act like a normal Go string
 			rawStr := data[currentOffset : currentOffset+col.Size]
-			// Find the first null byte to trim padding
 			end := 0
 			for end < len(rawStr) && rawStr[end] != 0 {
 				end++

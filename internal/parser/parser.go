@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Mohammad-y-abbass/moDB/internal/ast"
@@ -62,6 +63,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseUpdateStatement()
 	case lexer.DELETE_TOKEN:
 		return p.parseDeleteStatement()
+	case lexer.CREATE_TOKEN:
+		return p.parseCreateTableStatement()
 	case lexer.ILLEGAL:
 		p.addError(fmt.Sprintf("Illegal character '%s' at line %d, column %d",
 			p.currentToken.Value, p.currentToken.Line, p.currentToken.Col))
@@ -238,6 +241,109 @@ func (p *Parser) parseDeleteStatement() *ast.DeleteStatement {
 	}
 
 	return stmt
+}
+
+func (p *Parser) parseCreateTableStatement() *ast.CreateTableStatement {
+	stmt := &ast.CreateTableStatement{Token: p.currentToken}
+
+	if p.peekToken.Type != lexer.TABLE_TOKEN {
+		p.addError("Expected TABLE after CREATE")
+		return nil
+	}
+	p.nextToken() // Move to TABLE
+
+	if p.peekToken.Type != lexer.IDENTIFIER {
+		p.addError("Expected table name after CREATE TABLE")
+		return nil
+	}
+	p.nextToken() // Move to table name
+	stmt.Table = p.currentToken.Value
+
+	if p.peekToken.Type != lexer.LPAREN {
+		p.addError("Expected ( after table name")
+		return nil
+	}
+	p.nextToken() // Move to (
+
+	for {
+		p.nextToken() // Move to column name
+		col := p.parseColumnDefinition()
+		if col == (ast.ColumnDefinition{}) {
+			return nil
+		}
+		stmt.Columns = append(stmt.Columns, col)
+
+		if p.peekToken.Type == lexer.COMMA {
+			p.nextToken() // Move to comma
+		} else if p.peekToken.Type == lexer.RPAREN {
+			p.nextToken() // Move to )
+			break
+		} else {
+			p.addError(fmt.Sprintf("Expected , or ) in table definition, got %s", p.peekToken.Value))
+			return nil
+		}
+	}
+
+	return stmt
+}
+
+func (p *Parser) parseColumnDefinition() ast.ColumnDefinition {
+	if p.currentToken.Type != lexer.IDENTIFIER {
+		p.addError("Expected column name")
+		return ast.ColumnDefinition{}
+	}
+	col := ast.ColumnDefinition{Name: p.currentToken.Value, IsNullable: true}
+
+	if p.peekToken.Type != lexer.INT_TOKEN && p.peekToken.Type != lexer.TEXT_TOKEN {
+		p.addError(fmt.Sprintf("Expected data type for column %s, got %s", col.Name, p.peekToken.Value))
+		return ast.ColumnDefinition{}
+	}
+	p.nextToken()
+	col.DataType = p.currentToken.Value
+
+	// Handle optional (size) e.g., TEXT(255)
+	if p.peekToken.Type == lexer.LPAREN {
+		p.nextToken() // Move to (
+		if p.peekToken.Type != lexer.NUMBER {
+			p.addError("Expected number for size")
+			return ast.ColumnDefinition{}
+		}
+		p.nextToken() // Move to number
+		size, _ := strconv.Atoi(p.currentToken.Value)
+		col.Size = size
+		if p.peekToken.Type != lexer.RPAREN {
+			p.addError("Expected ) after size")
+			return ast.ColumnDefinition{}
+		}
+		p.nextToken() // Move to )
+	}
+
+	// Parse constraints
+	for p.peekToken.Type == lexer.NOT_TOKEN || p.peekToken.Type == lexer.UNIQUE_TOKEN || p.peekToken.Type == lexer.PRIMARY_TOKEN {
+		p.nextToken()
+		switch p.currentToken.Type {
+		case lexer.NOT_TOKEN:
+			if p.peekToken.Type != lexer.NULL_TOKEN {
+				p.addError("Expected NULL after NOT")
+				return ast.ColumnDefinition{}
+			}
+			p.nextToken()
+			col.IsNullable = false
+		case lexer.UNIQUE_TOKEN:
+			col.IsUnique = true
+		case lexer.PRIMARY_TOKEN:
+			if p.peekToken.Type != lexer.KEY_TOKEN {
+				p.addError("Expected KEY after PRIMARY")
+				return ast.ColumnDefinition{}
+			}
+			p.nextToken()
+			col.IsPrimaryKey = true
+			col.IsUnique = true
+			col.IsNullable = false
+		}
+	}
+
+	return col
 }
 
 func (p *Parser) parseWhereClause() *ast.WhereClause {
@@ -425,6 +531,23 @@ func (p *Parser) formatStatement(stmt ast.Statement, indent int) string {
 		} else {
 			builder.WriteString("\n")
 		}
+		builder.WriteString(indentStr + "}")
+		return builder.String()
+	case *ast.CreateTableStatement:
+		var builder strings.Builder
+		builder.WriteString(indentStr + "CreateTableStatement {\n")
+		builder.WriteString(indentStr + "  Table: \"" + s.Table + "\",\n")
+		builder.WriteString(indentStr + "  Columns: [\n")
+		for i, col := range s.Columns {
+			builder.WriteString(fmt.Sprintf("%s    {Name: %s, Type: %s, Nullable: %v, Unique: %v, PK: %v}",
+				indentStr, col.Name, col.DataType, col.IsNullable, col.IsUnique, col.IsPrimaryKey))
+			if i < len(s.Columns)-1 {
+				builder.WriteString(",\n")
+			} else {
+				builder.WriteString("\n")
+			}
+		}
+		builder.WriteString(indentStr + "  ]\n")
 		builder.WriteString(indentStr + "}")
 		return builder.String()
 	default:

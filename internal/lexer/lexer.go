@@ -83,6 +83,24 @@ func (l *Lexer) ReadIdentifier() Token {
 		return Token{Type: INTO_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "SET":
 		return Token{Type: SET_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "CREATE":
+		return Token{Type: CREATE_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "TABLE":
+		return Token{Type: TABLE_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "INT", "INTEGER":
+		return Token{Type: INT_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "TEXT", "VARCHAR":
+		return Token{Type: TEXT_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "NOT":
+		return Token{Type: NOT_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "NULL":
+		return Token{Type: NULL_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "UNIQUE":
+		return Token{Type: UNIQUE_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "PRIMARY":
+		return Token{Type: PRIMARY_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "KEY":
+		return Token{Type: KEY_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "TRUE":
 		return Token{Type: TRUE_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "FALSE":
@@ -106,8 +124,14 @@ func (l *Lexer) readNumber() Token {
 
 	value := l.input[start:l.cursor]
 
+	// Use ILLEGAL if it's just a lone dash
+	tokenType := NUMBER
+	if value == "-" {
+		tokenType = ILLEGAL
+	}
+
 	return Token{
-		Type:  NUMBER,
+		Type:  tokenType,
 		Value: value,
 		Line:  l.Line,
 		Col:   startCol,
@@ -123,11 +147,10 @@ func (l *Lexer) NextToken() Token {
 
 	char := l.peek()
 
-	if isAlpha(char) {
+	if isAlpha(char) || char == '.' {
 		return l.ReadIdentifier()
 	}
-
-	if isDigit(char) {
+	if isDigit(char) || char == '-' {
 		return l.readNumber()
 	}
 

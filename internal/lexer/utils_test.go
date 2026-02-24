@@ -33,9 +33,9 @@ func TestIsAlpha(t *testing.T) {
 		{'_', true},
 		{'@', true},
 		{'$', true},
+		{'.', true},
 		{'1', false},
 		{'-', false},
-		{'.', false},
 	}
 
 	for _, tt := range tests {

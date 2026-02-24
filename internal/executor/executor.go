@@ -99,6 +99,26 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 			return ResultSet{}, err
 		}
 
+		// Basic UNIQUE/PK constraint check (expensive scan)
+		existingRows, _ := table.SelectAll()
+		for _, col := range table.Schema.Columns {
+			if col.IsUnique || col.IsPrimaryKey {
+				colIdx := -1
+				for i, c := range table.Schema.Columns {
+					if c.Name == col.Name {
+						colIdx = i
+						break
+					}
+				}
+				newVal := convertedValues[colIdx]
+				for _, row := range existingRows {
+					if row.Values[colIdx] == newVal {
+						return ResultSet{}, fmt.Errorf("UNIQUE constraint violation on column %s: value %v already exists", col.Name, newVal)
+					}
+				}
+			}
+		}
+
 		err = table.Insert(convertedValues)
 		if err != nil {
 			return ResultSet{}, err
@@ -116,6 +136,51 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 			return ResultSet{}, fmt.Errorf("table not found: %s", n.TableName)
 		}
 		return ResultSet{}, fmt.Errorf("UPDATE not fully implemented")
+
+	case *planner.CreateTableNode:
+		if _, ok := e.Tables[n.TableName]; ok {
+			return ResultSet{}, fmt.Errorf("table already exists: %s", n.TableName)
+		}
+
+		var storageCols []storage.Column
+		for _, c := range n.Columns {
+			var dataType storage.DataType
+			var size uint32 = 32 // Default for text
+			switch strings.ToUpper(c.DataType) {
+			case "INT", "INTEGER":
+				dataType = storage.TypeInt32
+				size = 4
+			case "TEXT", "VARCHAR":
+				dataType = storage.TypeFixedText
+				if c.Size > 0 {
+					size = uint32(c.Size)
+				} else {
+					size = 32 // Default if not specified
+				}
+			default:
+				return ResultSet{}, fmt.Errorf("unsupported type: %s", c.DataType)
+			}
+			storageCols = append(storageCols, storage.Column{
+				Name:         c.Name,
+				Type:         dataType,
+				Size:         size,
+				IsNullable:   c.IsNullable,
+				IsUnique:     c.IsUnique,
+				IsPrimaryKey: c.IsPrimaryKey,
+			})
+		}
+
+		schema := storage.NewSchema(storageCols)
+		// For now, we use a simple path. In a real DB, the engine would manage this.
+		dbPath := fmt.Sprintf("./data/testdb/%s.db", n.TableName)
+		pager, err := storage.NewPager(dbPath)
+		if err != nil {
+			return ResultSet{}, err
+		}
+		table := storage.NewTable(pager, schema)
+		e.RegisterTable(n.TableName, table)
+
+		return ResultSet{}, nil
 	}
 
 	return ResultSet{}, fmt.Errorf("unknown plan node type")
@@ -239,23 +304,33 @@ func (e *Executor) applyProjection(rows []storage.Row, schema *storage.Schema, c
 
 func (e *Executor) convertValues(values []string, schema *storage.Schema) ([]interface{}, error) {
 	if len(values) != len(schema.Columns) {
-		return nil, fmt.Errorf("value count mismatch")
+		return nil, fmt.Errorf("value count mismatch: expected %d, got %d", len(schema.Columns), len(values))
 	}
 
 	converted := make([]interface{}, len(values))
 	for i, col := range schema.Columns {
 		val := values[i]
+
+		// Handle NULL (if we had a NULL token in values, but for now we check string "NULL")
+		if strings.ToUpper(val) == "NULL" {
+			if !col.IsNullable {
+				return nil, fmt.Errorf("column %s cannot be NULL", col.Name)
+			}
+			converted[i] = nil
+			continue
+		}
+
 		switch col.Type {
 		case storage.TypeInt32:
 			v, err := strconv.Atoi(val)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("invalid value for column %s (INT): %s", col.Name, val)
 			}
 			converted[i] = int32(v)
 		case storage.TypeUint32:
 			v, err := strconv.ParseUint(val, 10, 32)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("invalid value for column %s (UINT): %s", col.Name, val)
 			}
 			converted[i] = uint32(v)
 		case storage.TypeFixedText:

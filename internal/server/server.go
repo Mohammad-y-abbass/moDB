@@ -69,41 +69,63 @@ func handleConnection(conn net.Conn) {
 	fmt.Printf("--- New connection from %s ---\n", conn.RemoteAddr())
 
 	scanner := bufio.NewScanner(conn)
+	var queryBuffer strings.Builder
+
+	// Send an initial prompt
+	prompt := "moDB> "
+	conn.Write([]byte(prompt))
+
 	for scanner.Scan() {
-		query := scanner.Text()
-		if strings.TrimSpace(query) == "" {
-			continue
-		}
-		fmt.Printf("Received query: %q\n", query)
+		line := scanner.Text()
+		trimmedLine := strings.TrimSpace(line)
 
-		l := lexer.New(query)
-		p := parser.New(l)
-		program := p.ParseProgram()
-
-		if len(p.Errors()) > 0 {
-			errorMsg := p.GetErrorMessage()
-			fmt.Printf("%sParsing error:%s %s\n", colorRed, colorReset, errorMsg)
-			conn.Write([]byte(colorRed + errorMsg + colorReset + "\n"))
+		if trimmedLine == "" && queryBuffer.Len() == 0 {
+			conn.Write([]byte(prompt))
 			continue
 		}
 
-		for _, stmt := range program.Statements {
-			pNode := plan.GeneratePlan(stmt)
-			results, err := exec.Execute(pNode)
-			if err != nil {
-				errMsg := "Execution error: " + err.Error()
-				fmt.Printf("%s%s%s\n", colorRed, errMsg, colorReset)
-				conn.Write([]byte(colorRed + errMsg + colorReset + "\n"))
-				continue
-			}
+		queryBuffer.WriteString(line + " ")
 
-			if len(results.Columns) == 0 && len(results.Rows) == 0 {
-				conn.Write([]byte(colorGreen + "Success (Action completed)" + colorReset + "\n"))
+		// If the line ends with a semicolon, process the accumulated query
+		if strings.HasSuffix(trimmedLine, ";") {
+			fullQuery := strings.TrimSpace(queryBuffer.String())
+			queryBuffer.Reset()
+			prompt = "moDB> "
+
+			fmt.Printf("Received query: %q\n", fullQuery)
+
+			l := lexer.New(fullQuery)
+			p := parser.New(l)
+			program := p.ParseProgram()
+
+			if len(p.Errors()) > 0 {
+				errorMsg := p.GetErrorMessage()
+				fmt.Printf("%sParsing error:%s %s\n", colorRed, colorReset, errorMsg)
+				conn.Write([]byte(colorRed + errorMsg + colorReset + "\n"))
 			} else {
-				res := executor.FormatResultSet(results)
-				conn.Write([]byte(res + "\n"))
+				for _, stmt := range program.Statements {
+					pNode := plan.GeneratePlan(stmt)
+					results, err := exec.Execute(pNode)
+					if err != nil {
+						errMsg := "Execution error: " + err.Error()
+						fmt.Printf("%s%s%s\n", colorRed, errMsg, colorReset)
+						conn.Write([]byte(colorRed + errMsg + colorReset + "\n"))
+						continue
+					}
+
+					if len(results.Columns) == 0 && len(results.Rows) == 0 {
+						conn.Write([]byte(colorGreen + "Success (Action completed)" + colorReset + "\n"))
+					} else {
+						res := executor.FormatResultSet(results)
+						conn.Write([]byte(res + "\n"))
+					}
+				}
 			}
+		} else {
+			// Continue accumulating multi-line statement
+			prompt = "   -> "
 		}
+		conn.Write([]byte(prompt))
 	}
 	fmt.Printf("--- Connection closed ---\n")
 }

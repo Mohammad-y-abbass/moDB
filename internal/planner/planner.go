@@ -53,6 +53,13 @@ type DeleteNode struct {
 
 func (n *DeleteNode) PlanNode() {}
 
+type CreateTableNode struct {
+	TableName string
+	Columns   []ast.ColumnDefinition
+}
+
+func (n *CreateTableNode) PlanNode() {}
+
 type Planner struct{}
 
 func New() *Planner {
@@ -61,6 +68,11 @@ func New() *Planner {
 
 func (p *Planner) GeneratePlan(stmt ast.Statement) PlanNode {
 	switch s := stmt.(type) {
+	case *ast.CreateTableStatement:
+		return &CreateTableNode{
+			TableName: s.Table,
+			Columns:   s.Columns,
+		}
 	case *ast.SelectStatement:
 		var node PlanNode = &ScanNode{TableName: s.Table}
 		if s.Where != nil {
