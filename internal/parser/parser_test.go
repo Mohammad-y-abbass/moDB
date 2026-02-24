@@ -6,7 +6,7 @@ import (
 	"github.com/Mohammad-y-abbass/moDB/internal/ast"
 	"github.com/Mohammad-y-abbass/moDB/internal/lexer"
 )
-	
+
 func TestParseSelectStatement(t *testing.T) {
 	tests := []struct {
 		input           string
@@ -107,6 +107,82 @@ func TestParserErrors(t *testing.T) {
 		if errors[0] != tt.expectedError {
 			t.Errorf("input %q: expected error %q, got %q", tt.input, tt.expectedError, errors[0])
 		}
+	}
+}
+
+func TestParseWhereClause(t *testing.T) {
+	input := "SELECT * FROM users WHERE id = 1"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.SelectStatement)
+	if stmt.Where == nil {
+		t.Fatal("Where clause is nil")
+	}
+	if stmt.Where.Left != "id" {
+		t.Errorf("expected id, got %s", stmt.Where.Left)
+	}
+	if stmt.Where.Op != "=" {
+		t.Errorf("expected =, got %s", stmt.Where.Op)
+	}
+	if stmt.Where.Right != "1" {
+		t.Errorf("expected 1, got %s", stmt.Where.Right)
+	}
+}
+
+func TestParseInsertStatement(t *testing.T) {
+	input := "INSERT INTO users (name, age) VALUES (john, 30)"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.InsertStatement)
+	if stmt.Table != "users" {
+		t.Errorf("expected users, got %s", stmt.Table)
+	}
+	if len(stmt.Columns) != 2 || stmt.Columns[0] != "name" || stmt.Columns[1] != "age" {
+		t.Errorf("columns mismatch: %v", stmt.Columns)
+	}
+	if len(stmt.Values) != 2 || stmt.Values[0] != "john" || stmt.Values[1] != "30" {
+		t.Errorf("values mismatch: %v", stmt.Values)
+	}
+}
+
+func TestParseUpdateStatement(t *testing.T) {
+	input := "UPDATE users SET age = 31, name = johnny WHERE id = 1"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.UpdateStatement)
+	if stmt.Table != "users" {
+		t.Errorf("expected users, got %s", stmt.Table)
+	}
+	if stmt.Sets["age"] != "31" || stmt.Sets["name"] != "johnny" {
+		t.Errorf("sets mismatch: %v", stmt.Sets)
+	}
+	if stmt.Where == nil || stmt.Where.Left != "id" {
+		t.Errorf("where mismatch")
+	}
+}
+
+func TestParseDeleteStatement(t *testing.T) {
+	input := "DELETE FROM users WHERE id = 1"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.DeleteStatement)
+	if stmt.Table != "users" {
+		t.Errorf("expected users, got %s", stmt.Table)
+	}
+	if stmt.Where == nil || stmt.Where.Left != "id" {
+		t.Errorf("where mismatch")
 	}
 }
 

@@ -91,6 +91,11 @@ func TestReadIdentifierTable(t *testing.T) {
 		{"FROM", FROM_TOKEN, "FROM"},
 		{"users", IDENTIFIER, "users"},
 		{"MyTable", IDENTIFIER, "MyTable"},
+		{"user1", IDENTIFIER, "user1"},
+		{"dev@test.com", IDENTIFIER, "dev@test.com"},
+		{"system.info", IDENTIFIER, "system.info"},
+		{"my-table", IDENTIFIER, "my-table"},
+		{"$price", IDENTIFIER, "$price"},
 	}
 
 	for _, tt := range tests {

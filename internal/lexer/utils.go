@@ -5,5 +5,9 @@ func isDigit(ch byte) bool {
 }
 
 func isAlpha(ch byte) bool {
-	return ('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z') || ch == '_'
+	return ('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z') || ch == '_' || ch == '@' || ch == '$'
+}
+
+func isIdentifierPart(ch byte) bool {
+	return isAlpha(ch) || isDigit(ch) || ch == '.' || ch == '-'
 }

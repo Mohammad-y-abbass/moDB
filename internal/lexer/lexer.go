@@ -56,7 +56,7 @@ func (l *Lexer) ReadIdentifier() Token {
 	start := l.cursor
 	startCol := l.column
 
-	for l.cursor < len(l.input) && isAlpha(l.input[l.cursor]) {
+	for l.cursor < len(l.input) && isIdentifierPart(l.input[l.cursor]) {
 		l.advance()
 	}
 
@@ -67,8 +67,22 @@ func (l *Lexer) ReadIdentifier() Token {
 	switch upperValue {
 	case "SELECT":
 		return Token{Type: SELECT_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "INSERT":
+		return Token{Type: INSERT_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "UPDATE":
+		return Token{Type: UPDATE_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "DELETE":
+		return Token{Type: DELETE_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "WHERE":
+		return Token{Type: WHERE_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "FROM":
 		return Token{Type: FROM_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "VALUES":
+		return Token{Type: VALUES_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "INTO":
+		return Token{Type: INTO_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "SET":
+		return Token{Type: SET_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "TRUE":
 		return Token{Type: TRUE_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "FALSE":
@@ -127,6 +141,36 @@ func (l *Lexer) NextToken() Token {
 	case ';':
 		l.advance()
 		return Token{Type: SEMICOLON, Value: ";", Line: l.Line, Col: l.column - 1}
+	case '=':
+		l.advance()
+		return Token{Type: EQ, Value: "=", Line: l.Line, Col: l.column - 1}
+	case '!':
+		l.advance()
+		if l.peek() == '=' {
+			l.advance()
+			return Token{Type: NOT_EQ, Value: "!=", Line: l.Line, Col: l.column - 2}
+		}
+		return Token{Type: ILLEGAL, Value: "!", Line: l.Line, Col: l.column - 1}
+	case '>':
+		l.advance()
+		if l.peek() == '=' {
+			l.advance()
+			return Token{Type: GTE, Value: ">=", Line: l.Line, Col: l.column - 2}
+		}
+		return Token{Type: GT, Value: ">", Line: l.Line, Col: l.column - 1}
+	case '<':
+		l.advance()
+		if l.peek() == '=' {
+			l.advance()
+			return Token{Type: LTE, Value: "<=", Line: l.Line, Col: l.column - 2}
+		}
+		return Token{Type: LT, Value: "<", Line: l.Line, Col: l.column - 1}
+	case '(':
+		l.advance()
+		return Token{Type: LPAREN, Value: "(", Line: l.Line, Col: l.column - 1}
+	case ')':
+		l.advance()
+		return Token{Type: RPAREN, Value: ")", Line: l.Line, Col: l.column - 1}
 	}
 
 	l.advance()

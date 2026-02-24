@@ -6,6 +6,7 @@ type SelectStatement struct {
 	Token   lexer.Token
 	Columns []string
 	Table   string
+	Where   *WhereClause
 }
 
 func (ss *SelectStatement) StatementNode() {}
