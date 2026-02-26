@@ -216,6 +216,48 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 			}
 		}
 
+		// Foreign Key enforcement: verify referenced parent rows exist
+		for colIdx, col := range table.Schema.Columns {
+			if col.References == nil {
+				continue
+			}
+			parentTable, ok := e.Tables[col.References.Table]
+			if !ok {
+				return ResultSet{}, fmt.Errorf("FK error: referenced table '%s' not found", col.References.Table)
+			}
+			// find the referenced column index in parent
+			parentColIdx := -1
+			for i, pc := range parentTable.Schema.Columns {
+				if pc.Name == col.References.Column {
+					parentColIdx = i
+					break
+				}
+			}
+			if parentColIdx == -1 {
+				return ResultSet{}, fmt.Errorf("FK error: referenced column '%s' not found in table '%s'", col.References.Column, col.References.Table)
+			}
+			childVal := convertedValues[colIdx]
+			// NULL FK values are allowed (optional relationship)
+			if childVal == nil {
+				continue
+			}
+			parentRows, err2 := parentTable.SelectAll()
+			if err2 != nil {
+				return ResultSet{}, err2
+			}
+			found := false
+			for _, pr := range parentRows {
+				if fmt.Sprintf("%v", pr.Values[parentColIdx]) == fmt.Sprintf("%v", childVal) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return ResultSet{}, fmt.Errorf("FK constraint violation: value %v for column '%s' does not exist in '%s.%s'",
+					childVal, col.Name, col.References.Table, col.References.Column)
+			}
+		}
+
 		err = table.Insert(convertedValues)
 		if err != nil {
 			return ResultSet{}, err
@@ -244,6 +286,10 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 			}
 
 			if match {
+				// Referential integrity: reject delete if any child table references this row
+				if err2 := e.checkReferencingChildren(table, row); err2 != nil {
+					return ResultSet{}, err2
+				}
 				err = table.Delete(row.PageID, row.SlotID)
 				if err != nil {
 					return ResultSet{}, err
@@ -296,6 +342,67 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 						return ResultSet{}, err
 					}
 					newValues[colIdx] = converted
+				}
+
+				// --- FK ENFORCEMENT ON UPDATE ---
+
+				// 1. If we are updating a CHILD column (FK), verify the new value exists in the parent
+				for colIdx, col := range table.Schema.Columns {
+					if col.References == nil {
+						continue
+					}
+					// Did this column change?
+					if fmt.Sprintf("%v", row.Values[colIdx]) == fmt.Sprintf("%v", newValues[colIdx]) {
+						continue
+					}
+
+					parentTable, ok := e.Tables[col.References.Table]
+					if !ok {
+						return ResultSet{}, fmt.Errorf("FK error: parent table '%s' not found", col.References.Table)
+					}
+					parentColIdx := -1
+					for i, pc := range parentTable.Schema.Columns {
+						if pc.Name == col.References.Column {
+							parentColIdx = i
+							break
+						}
+					}
+					if parentColIdx == -1 {
+						return ResultSet{}, fmt.Errorf("FK error: ref column '%s' not found in '%s'", col.References.Column, col.References.Table)
+					}
+
+					newFKVal := newValues[colIdx]
+					if newFKVal == nil {
+						continue // NULL allowed
+					}
+
+					parentRows, _ := parentTable.SelectAll()
+					found := false
+					for _, pr := range parentRows {
+						if fmt.Sprintf("%v", pr.Values[parentColIdx]) == fmt.Sprintf("%v", newFKVal) {
+							found = true
+							break
+						}
+					}
+					if !found {
+						return ResultSet{}, fmt.Errorf("FK constraint violation on update: value %v does not exist in '%s.%s'",
+							newFKVal, col.References.Table, col.References.Column)
+					}
+				}
+
+				// 2. If we are updating a PARENT row's PK, block if children reference the OLD value
+				for colIdx, col := range table.Schema.Columns {
+					if !col.IsPrimaryKey {
+						continue
+					}
+					// Did PK change?
+					if fmt.Sprintf("%v", row.Values[colIdx]) == fmt.Sprintf("%v", newValues[colIdx]) {
+						continue
+					}
+					// PK changed – check children
+					if err2 := e.checkReferencingChildren(table, row); err2 != nil {
+						return ResultSet{}, fmt.Errorf("FK constraint violation on update: cannot change PK because %v", err2)
+					}
 				}
 
 				err = table.Update(row.PageID, row.SlotID, newValues)
@@ -356,6 +463,12 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 				IsNullable:   c.IsNullable,
 				IsUnique:     c.IsUnique,
 				IsPrimaryKey: c.IsPrimaryKey,
+				References: func() *storage.ForeignKeyRef {
+					if c.References == nil {
+						return nil
+					}
+					return &storage.ForeignKeyRef{Table: c.References.Table, Column: c.References.Column}
+				}(),
 			})
 		}
 
@@ -379,6 +492,9 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 		}
 
 		return ResultSet{}, nil
+
+	case *planner.JoinNode:
+		return e.executeJoin(n)
 	}
 
 	return ResultSet{}, fmt.Errorf("unknown plan node type")

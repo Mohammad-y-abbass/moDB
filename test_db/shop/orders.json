@@ -1,0 +1,1 @@
+{"columns":[{"name":"id","type":0,"size":4,"is_nullable":false,"is_unique":true,"is_primary_key":true},{"name":"user_id","type":0,"size":4,"is_nullable":true,"is_unique":false,"is_primary_key":false,"references":{"table":"users","column":"id"}},{"name":"amount","type":0,"size":4,"is_nullable":true,"is_unique":false,"is_primary_key":false}],"total_size":13,"bitmap_size":1}

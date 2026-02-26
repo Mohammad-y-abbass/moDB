@@ -1,0 +1,1 @@
+{"columns":[{"name":"id","type":0,"size":4,"is_nullable":false,"is_unique":true,"is_primary_key":true},{"name":"name","type":2,"size":32,"is_nullable":true,"is_unique":false,"is_primary_key":false},{"name":"dept_id","type":0,"size":4,"is_nullable":true,"is_unique":false,"is_primary_key":false,"references":{"table":"departments","column":"id"}}],"total_size":41,"bitmap_size":1}

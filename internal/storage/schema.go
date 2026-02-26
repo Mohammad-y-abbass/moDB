@@ -8,13 +8,20 @@ const (
 	TypeFixedText                 // We'll define a fixed size, e.g., 32 bytes
 )
 
+// ForeignKeyRef stores the target table and column for a FOREIGN KEY constraint.
+type ForeignKeyRef struct {
+	Table  string `json:"table"`
+	Column string `json:"column"`
+}
+
 type Column struct {
-	Name         string   `json:"name"`
-	Type         DataType `json:"type"`
-	Size         uint32   `json:"size"`
-	IsNullable   bool     `json:"is_nullable"`
-	IsUnique     bool     `json:"is_unique"`
-	IsPrimaryKey bool     `json:"is_primary_key"`
+	Name         string         `json:"name"`
+	Type         DataType       `json:"type"`
+	Size         uint32         `json:"size"`
+	IsNullable   bool           `json:"is_nullable"`
+	IsUnique     bool           `json:"is_unique"`
+	IsPrimaryKey bool           `json:"is_primary_key"`
+	References   *ForeignKeyRef `json:"references,omitempty"`
 }
 
 type Schema struct {

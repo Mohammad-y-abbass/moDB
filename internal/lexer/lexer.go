@@ -109,6 +109,14 @@ func (l *Lexer) ReadIdentifier() Token {
 		return Token{Type: TRUE_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "FALSE":
 		return Token{Type: FALSE_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "JOIN":
+		return Token{Type: JOIN_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "ON":
+		return Token{Type: ON_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "REFERENCES":
+		return Token{Type: REFERENCES_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "FOREIGN":
+		return Token{Type: FOREIGN_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	default:
 		return Token{Type: IDENTIFIER, Value: value, Line: l.Line, Col: startCol}
 	}

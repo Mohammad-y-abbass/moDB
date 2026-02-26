@@ -72,6 +72,20 @@ type UseDatabaseNode struct {
 
 func (n *UseDatabaseNode) PlanNode() {}
 
+// JoinNode represents an INNER JOIN between two tables.
+// LeftKey/RightKey are the qualified column references from the ON clause
+// (e.g., "orders.user_id" and "users.id").
+type JoinNode struct {
+	Left     *ScanNode
+	Right    *ScanNode
+	LeftKey  string           // qualified: "left_table.col"
+	RightKey string           // qualified: "right_table.col"
+	Columns  []string         // projection (empty = *)
+	Where    *ast.WhereClause // optional post-join filter
+}
+
+func (n *JoinNode) PlanNode() {}
+
 type Planner struct{}
 
 func New() *Planner {
@@ -94,6 +108,19 @@ func (p *Planner) GeneratePlan(stmt ast.Statement) PlanNode {
 			Columns:   s.Columns,
 		}
 	case *ast.SelectStatement:
+		// JOIN path — produce a JoinNode instead of a ScanNode
+		if s.Join != nil {
+			return &JoinNode{
+				Left:     &ScanNode{TableName: s.Table},
+				Right:    &ScanNode{TableName: s.Join.Table},
+				LeftKey:  s.Join.LeftKey,
+				RightKey: s.Join.RightKey,
+				Columns:  s.Columns,
+				Where:    s.Where,
+			}
+		}
+
+		// Plain SELECT path
 		var node PlanNode = &ScanNode{TableName: s.Table}
 		if s.Where != nil {
 			node = &FilterNode{

@@ -2,6 +2,12 @@ package ast
 
 import "github.com/Mohammad-y-abbass/moDB/internal/lexer"
 
+// ForeignKeyRef describes a REFERENCES parent_table(parent_col) constraint.
+type ForeignKeyRef struct {
+	Table  string
+	Column string
+}
+
 type ColumnDefinition struct {
 	Name         string
 	DataType     string
@@ -9,6 +15,7 @@ type ColumnDefinition struct {
 	IsNullable   bool
 	IsUnique     bool
 	IsPrimaryKey bool
+	References   *ForeignKeyRef // nil if not a FK
 }
 
 type CreateTableStatement struct {

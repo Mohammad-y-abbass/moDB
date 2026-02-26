@@ -118,6 +118,49 @@ func (p *Parser) parseSelectStatement() *ast.SelectStatement {
 
 	stmt.Table = p.currentToken.Value
 
+	// Parse optional JOIN clause: JOIN table ON left_col = right_col
+	if p.peekToken.Type == lexer.JOIN_TOKEN {
+		p.nextToken() // move to JOIN
+		if p.peekToken.Type != lexer.IDENTIFIER {
+			p.addError(fmt.Sprintf("Expected table name after JOIN at line %d, column %d", p.peekToken.Line, p.peekToken.Col))
+			return nil
+		}
+		p.nextToken() // move to join table name
+		joinTable := p.currentToken.Value
+
+		if p.peekToken.Type != lexer.ON_TOKEN {
+			p.addError(fmt.Sprintf("Expected ON after JOIN table name at line %d, column %d", p.peekToken.Line, p.peekToken.Col))
+			return nil
+		}
+		p.nextToken() // move to ON
+
+		if p.peekToken.Type != lexer.IDENTIFIER {
+			p.addError(fmt.Sprintf("Expected left column in ON clause at line %d, column %d", p.peekToken.Line, p.peekToken.Col))
+			return nil
+		}
+		p.nextToken() // move to left column
+		leftKey := p.currentToken.Value
+
+		if p.peekToken.Type != lexer.EQ {
+			p.addError(fmt.Sprintf("Expected = in ON clause at line %d, column %d", p.peekToken.Line, p.peekToken.Col))
+			return nil
+		}
+		p.nextToken() // move to =
+
+		if p.peekToken.Type != lexer.IDENTIFIER {
+			p.addError(fmt.Sprintf("Expected right column in ON clause at line %d, column %d", p.peekToken.Line, p.peekToken.Col))
+			return nil
+		}
+		p.nextToken() // move to right column
+		rightKey := p.currentToken.Value
+
+		stmt.Join = &ast.JoinClause{
+			Table:    joinTable,
+			LeftKey:  leftKey,
+			RightKey: rightKey,
+		}
+	}
+
 	if p.peekToken.Type == lexer.WHERE_TOKEN {
 		p.nextToken() // move to WHERE
 		p.nextToken() // move to identifier
@@ -361,7 +404,7 @@ func (p *Parser) parseColumnDefinition() ast.ColumnDefinition {
 		p.nextToken() // Move to )
 	}
 
-	// Parse constraints
+	// Parse constraints: NOT NULL, UNIQUE, PRIMARY KEY
 	for p.peekToken.Type == lexer.NOT_TOKEN || p.peekToken.Type == lexer.UNIQUE_TOKEN || p.peekToken.Type == lexer.PRIMARY_TOKEN {
 		p.nextToken()
 		switch p.currentToken.Type {
@@ -384,6 +427,38 @@ func (p *Parser) parseColumnDefinition() ast.ColumnDefinition {
 			col.IsUnique = true
 			col.IsNullable = false
 		}
+	}
+
+	// Parse optional inline FK: REFERENCES parent_table(parent_col)
+	if p.peekToken.Type == lexer.REFERENCES_TOKEN {
+		p.nextToken() // move to REFERENCES
+		if p.peekToken.Type != lexer.IDENTIFIER {
+			p.addError("Expected table name after REFERENCES")
+			return ast.ColumnDefinition{}
+		}
+		p.nextToken() // move to parent table name
+		refTable := p.currentToken.Value
+
+		if p.peekToken.Type != lexer.LPAREN {
+			p.addError("Expected ( after table name in REFERENCES")
+			return ast.ColumnDefinition{}
+		}
+		p.nextToken() // move to (
+
+		if p.peekToken.Type != lexer.IDENTIFIER {
+			p.addError("Expected column name in REFERENCES")
+			return ast.ColumnDefinition{}
+		}
+		p.nextToken() // move to parent column name
+		refCol := p.currentToken.Value
+
+		if p.peekToken.Type != lexer.RPAREN {
+			p.addError("Expected ) after column name in REFERENCES")
+			return ast.ColumnDefinition{}
+		}
+		p.nextToken() // move to )
+
+		col.References = &ast.ForeignKeyRef{Table: refTable, Column: refCol}
 	}
 
 	return col
