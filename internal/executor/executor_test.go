@@ -1548,3 +1548,126 @@ func TestExecuteDeleteNodeTableNotFound(t *testing.T) {
 		t.Error("expected error for non-existent table in delete")
 	}
 }
+
+func TestExecuteDropTable(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	plan := &planner.DropTableNode{TableName: "users"}
+	_, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("DropTable should succeed: %v", err)
+	}
+
+	if _, ok := exec.Tables["users"]; ok {
+		t.Error("table should no longer be registered after drop")
+	}
+}
+
+func TestExecuteDropTableNotFound(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	plan := &planner.DropTableNode{TableName: "nonexistent"}
+	_, err := exec.Execute(plan)
+	if err == nil {
+		t.Error("expected error for non-existent table in drop")
+	}
+}
+
+func TestExecuteDropDatabase(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	plan := &planner.DropDatabaseNode{DatabaseName: "testdb"}
+	_, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("DropDatabase should succeed: %v", err)
+	}
+
+	if exec.Engine.ActiveDB != "" {
+		t.Error("ActiveDB should be cleared after dropping the active database")
+	}
+	if len(exec.Tables) != 0 {
+		t.Error("Tables should be cleared after dropping the active database")
+	}
+}
+
+func TestExecuteDropDatabaseNotActive(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	plan := &planner.DropDatabaseNode{DatabaseName: "otherdb"}
+	_, err := exec.Execute(plan)
+	if err == nil {
+		t.Error("expected error for dropping a database that is not active")
+	}
+}
+
+func TestExecuteShowDatabases(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	plan := &planner.ShowDatabasesNode{}
+	result, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("ShowDatabases should succeed: %v", err)
+	}
+
+	if len(result.Columns) != 1 || result.Columns[0] != "Database" {
+		t.Errorf("expected [Database] columns, got %v", result.Columns)
+	}
+
+	found := false
+	for _, row := range result.Rows {
+		if row.Values[0] == "testdb" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected testdb to be in the database list")
+	}
+}
+
+func TestExecuteShowTables(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	// Create the .db file on disk (setupExecutor creates users table in memory but we need the file)
+	// Actually, setupExecutor does create the pager which creates the file, so it should already exist.
+
+	plan := &planner.ShowTablesNode{}
+	result, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("ShowTables should succeed: %v", err)
+	}
+
+	if len(result.Columns) != 1 || result.Columns[0] != "Table" {
+		t.Errorf("expected [Table] columns, got %v", result.Columns)
+	}
+
+	found := false
+	for _, row := range result.Rows {
+		if row.Values[0] == "users" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected users to be in the table list")
+	}
+}
+
+func TestExecuteShowTablesNoDatabase(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	exec.Engine.ActiveDB = ""
+
+	plan := &planner.ShowTablesNode{}
+	_, err := exec.Execute(plan)
+	if err == nil {
+		t.Error("expected error for ShowTables with no active database")
+	}
+}

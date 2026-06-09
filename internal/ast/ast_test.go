@@ -196,6 +196,56 @@ func TestUpdateStatement(t *testing.T) {
 	}
 }
 
+func TestShowDatabasesStatement(t *testing.T) {
+	stmt := &ShowDatabasesStatement{
+		Token: lexer.Token{Type: lexer.SHOW_TOKEN, Value: "SHOW"},
+	}
+	if stmt.TokenLiteral() != "SHOW" {
+		t.Errorf("expected SHOW, got %s", stmt.TokenLiteral())
+	}
+	if stmt.String() != "SHOW DATABASES" {
+		t.Errorf("unexpected String(): %q", stmt.String())
+	}
+}
+
+func TestShowTablesStatement(t *testing.T) {
+	stmt := &ShowTablesStatement{
+		Token: lexer.Token{Type: lexer.SHOW_TOKEN, Value: "SHOW"},
+	}
+	if stmt.TokenLiteral() != "SHOW" {
+		t.Errorf("expected SHOW, got %s", stmt.TokenLiteral())
+	}
+	if stmt.String() != "SHOW TABLES" {
+		t.Errorf("unexpected String(): %q", stmt.String())
+	}
+}
+
+func TestDropTableStatement(t *testing.T) {
+	stmt := &DropTableStatement{
+		Token: lexer.Token{Type: lexer.DROP_TOKEN, Value: "DROP"},
+		Table: "users",
+	}
+	if stmt.TokenLiteral() != "DROP" {
+		t.Errorf("expected DROP, got %s", stmt.TokenLiteral())
+	}
+	if stmt.String() != "DROP TABLE users" {
+		t.Errorf("unexpected String(): %q", stmt.String())
+	}
+}
+
+func TestDropDatabaseStatement(t *testing.T) {
+	stmt := &DropDatabaseStatement{
+		Token:        lexer.Token{Type: lexer.DROP_TOKEN, Value: "DROP"},
+		DatabaseName: "mydb",
+	}
+	if stmt.TokenLiteral() != "DROP" {
+		t.Errorf("expected DROP, got %s", stmt.TokenLiteral())
+	}
+	if stmt.String() != "DROP DATABASE mydb" {
+		t.Errorf("unexpected String(): %q", stmt.String())
+	}
+}
+
 func TestDeleteStatement(t *testing.T) {
 	del := &DeleteStatement{
 		Token: lexer.Token{Type: lexer.DELETE_TOKEN, Value: "DELETE"},

@@ -60,6 +60,26 @@ type CreateTableNode struct {
 
 func (n *CreateTableNode) PlanNode() {}
 
+type ShowDatabasesNode struct{}
+
+func (n *ShowDatabasesNode) PlanNode() {}
+
+type ShowTablesNode struct{}
+
+func (n *ShowTablesNode) PlanNode() {}
+
+type DropTableNode struct {
+	TableName string
+}
+
+func (n *DropTableNode) PlanNode() {}
+
+type DropDatabaseNode struct {
+	DatabaseName string
+}
+
+func (n *DropDatabaseNode) PlanNode() {}
+
 type CreateDatabaseNode struct {
 	DatabaseName string
 }
@@ -94,6 +114,18 @@ func New() *Planner {
 
 func (p *Planner) GeneratePlan(stmt ast.Statement) PlanNode {
 	switch s := stmt.(type) {
+	case *ast.ShowDatabasesStatement:
+		return &ShowDatabasesNode{}
+	case *ast.ShowTablesStatement:
+		return &ShowTablesNode{}
+	case *ast.DropTableStatement:
+		return &DropTableNode{
+			TableName: s.Table,
+		}
+	case *ast.DropDatabaseStatement:
+		return &DropDatabaseNode{
+			DatabaseName: s.DatabaseName,
+		}
 	case *ast.CreateDatabaseStatement:
 		return &CreateDatabaseNode{
 			DatabaseName: s.DatabaseName,

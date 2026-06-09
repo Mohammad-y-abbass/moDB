@@ -83,13 +83,17 @@ func (l *Lexer) ReadIdentifier() Token {
 		return Token{Type: INTO_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "SET":
 		return Token{Type: SET_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "SHOW":
+		return Token{Type: SHOW_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "DROP":
+		return Token{Type: DROP_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "CREATE":
 		return Token{Type: CREATE_TOKEN, Value: value, Line: l.Line, Col: startCol}
-	case "DATABASE":
+	case "DATABASE", "DATABASES":
 		return Token{Type: DATABASE_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "USE":
 		return Token{Type: USE_TOKEN, Value: value, Line: l.Line, Col: startCol}
-	case "TABLE":
+	case "TABLE", "TABLES":
 		return Token{Type: TABLE_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "INT", "INTEGER":
 		return Token{Type: INT_TOKEN, Value: value, Line: l.Line, Col: startCol}

@@ -14,6 +14,8 @@ const (
 	SET_TOKEN        TokenType = "SET"
 	CREATE_TOKEN     TokenType = "CREATE"
 	DATABASE_TOKEN   TokenType = "DATABASE"
+	SHOW_TOKEN       TokenType = "SHOW"
+	DROP_TOKEN       TokenType = "DROP"
 	USE_TOKEN        TokenType = "USE"
 	TABLE_TOKEN      TokenType = "TABLE"
 	INT_TOKEN        TokenType = "INT"

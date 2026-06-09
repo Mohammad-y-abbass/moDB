@@ -63,6 +63,10 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseUpdateStatement()
 	case lexer.DELETE_TOKEN:
 		return p.parseDeleteStatement()
+	case lexer.SHOW_TOKEN:
+		return p.parseShowStatement()
+	case lexer.DROP_TOKEN:
+		return p.parseDropStatement()
 	case lexer.CREATE_TOKEN:
 		return p.parseCreateStatement()
 	case lexer.USE_TOKEN:
@@ -285,6 +289,72 @@ func (p *Parser) parseDeleteStatement() *ast.DeleteStatement {
 		stmt.Where = p.parseWhereClause()
 	}
 
+	return stmt
+}
+
+func (p *Parser) parseShowStatement() ast.Statement {
+	if p.peekToken.Type == lexer.DATABASE_TOKEN {
+		p.nextToken()
+		return &ast.ShowDatabasesStatement{Token: p.currentToken}
+	} else if p.peekToken.Type == lexer.TABLE_TOKEN {
+		p.nextToken()
+		return &ast.ShowTablesStatement{Token: p.currentToken}
+	} else {
+		p.addError(fmt.Sprintf("Expected DATABASES or TABLES after SHOW at line %d, column %d, but got '%s'",
+			p.peekToken.Line, p.peekToken.Col, p.peekToken.Value))
+		return nil
+	}
+}
+
+func (p *Parser) parseDropStatement() ast.Statement {
+	if p.peekToken.Type == lexer.TABLE_TOKEN {
+		return p.parseDropTableStatement()
+	} else if p.peekToken.Type == lexer.DATABASE_TOKEN {
+		return p.parseDropDatabaseStatement()
+	} else {
+		p.addError(fmt.Sprintf("Expected TABLE or DATABASE after DROP at line %d, column %d, but got '%s'",
+			p.peekToken.Line, p.peekToken.Col, p.peekToken.Value))
+		return nil
+	}
+}
+
+func (p *Parser) parseDropTableStatement() *ast.DropTableStatement {
+	stmt := &ast.DropTableStatement{Token: p.currentToken}
+
+	p.nextToken() // Move to TABLE
+
+	if p.currentToken.Type != lexer.TABLE_TOKEN {
+		p.addError(fmt.Sprintf("Expected TABLE after DROP at line %d, column %d, but got '%s'",
+			p.currentToken.Line, p.currentToken.Col, p.currentToken.Value))
+		return nil
+	}
+
+	if p.peekToken.Type != lexer.IDENTIFIER {
+		p.addError("Expected table name after DROP TABLE")
+		return nil
+	}
+	p.nextToken() // Move to table name
+	stmt.Table = p.currentToken.Value
+	return stmt
+}
+
+func (p *Parser) parseDropDatabaseStatement() *ast.DropDatabaseStatement {
+	stmt := &ast.DropDatabaseStatement{Token: p.currentToken}
+
+	p.nextToken() // Move to DATABASE
+
+	if p.currentToken.Type != lexer.DATABASE_TOKEN {
+		p.addError(fmt.Sprintf("Expected DATABASE after DROP at line %d, column %d, but got '%s'",
+			p.currentToken.Line, p.currentToken.Col, p.currentToken.Value))
+		return nil
+	}
+
+	if p.peekToken.Type != lexer.IDENTIFIER {
+		p.addError("Expected database name after DROP DATABASE")
+		return nil
+	}
+	p.nextToken() // Move to database name
+	stmt.DatabaseName = p.currentToken.Value
 	return stmt
 }
 

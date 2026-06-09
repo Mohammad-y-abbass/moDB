@@ -821,6 +821,120 @@ func TestParseSelectProjection(t *testing.T) {
 	}
 }
 
+func TestParseShowDatabases(t *testing.T) {
+	input := "SHOW DATABASES"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Statements))
+	}
+
+	_, ok := program.Statements[0].(*ast.ShowDatabasesStatement)
+	if !ok {
+		t.Fatalf("expected *ast.ShowDatabasesStatement, got %T", program.Statements[0])
+	}
+}
+
+func TestParseShowTables(t *testing.T) {
+	input := "SHOW TABLES"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Statements))
+	}
+
+	_, ok := program.Statements[0].(*ast.ShowTablesStatement)
+	if !ok {
+		t.Fatalf("expected *ast.ShowTablesStatement, got %T", program.Statements[0])
+	}
+}
+
+func TestParseShowInvalid(t *testing.T) {
+	input := "SHOW foo"
+	l := lexer.New(input)
+	p := New(l)
+	p.ParseProgram()
+	if len(p.Errors()) == 0 {
+		t.Error("expected error for SHOW foo")
+	}
+}
+
+func TestParseDropTable(t *testing.T) {
+	input := "DROP TABLE users"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Statements))
+	}
+
+	stmt, ok := program.Statements[0].(*ast.DropTableStatement)
+	if !ok {
+		t.Fatalf("expected *ast.DropTableStatement, got %T", program.Statements[0])
+	}
+	if stmt.Table != "users" {
+		t.Errorf("expected users, got %s", stmt.Table)
+	}
+}
+
+func TestParseDropDatabase(t *testing.T) {
+	input := "DROP DATABASE mydb"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Statements))
+	}
+
+	stmt, ok := program.Statements[0].(*ast.DropDatabaseStatement)
+	if !ok {
+		t.Fatalf("expected *ast.DropDatabaseStatement, got %T", program.Statements[0])
+	}
+	if stmt.DatabaseName != "mydb" {
+		t.Errorf("expected mydb, got %s", stmt.DatabaseName)
+	}
+}
+
+func TestParseDropTableNoName(t *testing.T) {
+	input := "DROP TABLE"
+	l := lexer.New(input)
+	p := New(l)
+	p.ParseProgram()
+	if len(p.Errors()) == 0 {
+		t.Error("expected error for DROP TABLE with no name")
+	}
+}
+
+func TestParseDropDatabaseNoName(t *testing.T) {
+	input := "DROP DATABASE"
+	l := lexer.New(input)
+	p := New(l)
+	p.ParseProgram()
+	if len(p.Errors()) == 0 {
+		t.Error("expected error for DROP DATABASE with no name")
+	}
+}
+
+func TestParseDropInvalid(t *testing.T) {
+	input := "DROP foo"
+	l := lexer.New(input)
+	p := New(l)
+	p.ParseProgram()
+	if len(p.Errors()) == 0 {
+		t.Error("expected error for DROP foo")
+	}
+}
+
 func TestParserNewInitializesCorrectly(t *testing.T) {
 	l := lexer.New("SELECT * FROM users")
 	p := New(l)

@@ -16,6 +16,10 @@ func TestPlanNodeImplementations(t *testing.T) {
 		&UpdateNode{TableName: "users", Sets: map[string]string{"name": "john"}},
 		&DeleteNode{TableName: "users", Where: nil},
 		&CreateTableNode{TableName: "users"},
+		&ShowDatabasesNode{},
+		&ShowTablesNode{},
+		&DropTableNode{TableName: "users"},
+		&DropDatabaseNode{DatabaseName: "mydb"},
 		&CreateDatabaseNode{DatabaseName: "mydb"},
 		&UseDatabaseNode{DatabaseName: "mydb"},
 		&JoinNode{
@@ -266,6 +270,66 @@ func TestGeneratePlanDeleteWithoutWhere(t *testing.T) {
 	}
 	if del.Where != nil {
 		t.Error("expected nil where for delete")
+	}
+}
+
+func TestGeneratePlanShowDatabases(t *testing.T) {
+	p := New()
+	stmt := &ast.ShowDatabasesStatement{
+		Token: lexer.Token{Type: lexer.SHOW_TOKEN, Value: "SHOW"},
+	}
+
+	plan := p.GeneratePlan(stmt)
+	_, ok := plan.(*ShowDatabasesNode)
+	if !ok {
+		t.Fatalf("expected *ShowDatabasesNode, got %T", plan)
+	}
+}
+
+func TestGeneratePlanShowTables(t *testing.T) {
+	p := New()
+	stmt := &ast.ShowTablesStatement{
+		Token: lexer.Token{Type: lexer.SHOW_TOKEN, Value: "SHOW"},
+	}
+
+	plan := p.GeneratePlan(stmt)
+	_, ok := plan.(*ShowTablesNode)
+	if !ok {
+		t.Fatalf("expected *ShowTablesNode, got %T", plan)
+	}
+}
+
+func TestGeneratePlanDropTable(t *testing.T) {
+	p := New()
+	stmt := &ast.DropTableStatement{
+		Token: lexer.Token{Type: lexer.DROP_TOKEN, Value: "DROP"},
+		Table: "users",
+	}
+
+	plan := p.GeneratePlan(stmt)
+	dropTbl, ok := plan.(*DropTableNode)
+	if !ok {
+		t.Fatalf("expected *DropTableNode, got %T", plan)
+	}
+	if dropTbl.TableName != "users" {
+		t.Errorf("expected users, got %s", dropTbl.TableName)
+	}
+}
+
+func TestGeneratePlanDropDatabase(t *testing.T) {
+	p := New()
+	stmt := &ast.DropDatabaseStatement{
+		Token:        lexer.Token{Type: lexer.DROP_TOKEN, Value: "DROP"},
+		DatabaseName: "mydb",
+	}
+
+	plan := p.GeneratePlan(stmt)
+	dropDB, ok := plan.(*DropDatabaseNode)
+	if !ok {
+		t.Fatalf("expected *DropDatabaseNode, got %T", plan)
+	}
+	if dropDB.DatabaseName != "mydb" {
+		t.Errorf("expected mydb, got %s", dropDB.DatabaseName)
 	}
 }
 

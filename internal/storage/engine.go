@@ -24,6 +24,14 @@ func (e *Engine) CreateDatabase(name string) error {
 	return os.Mkdir(path, 0755)
 }
 
+func (e *Engine) DropDatabase(name string) error {
+	path := filepath.Join(e.BaseDir, name)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return fmt.Errorf("database does not exist: %s", name)
+	}
+	return os.RemoveAll(path)
+}
+
 func (e *Engine) UseDatabase(name string) error {
 	path := filepath.Join(e.BaseDir, name)
 	if _, err := os.Stat(path); os.IsNotExist(err) {

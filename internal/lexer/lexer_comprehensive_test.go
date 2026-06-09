@@ -62,6 +62,8 @@ func TestReadIdentifierKeywords(t *testing.T) {
 		{"VALUES", VALUES_TOKEN},
 		{"INTO", INTO_TOKEN},
 		{"SET", SET_TOKEN},
+		{"SHOW", SHOW_TOKEN},
+		{"DROP", DROP_TOKEN},
 		{"CREATE", CREATE_TOKEN},
 		{"DATABASE", DATABASE_TOKEN},
 		{"USE", USE_TOKEN},

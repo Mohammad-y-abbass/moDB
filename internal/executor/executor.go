@@ -414,6 +414,97 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 		}
 		return ResultSet{Message: fmt.Sprintf("Updated %d rows", updatedCount)}, nil
 
+	case *planner.ShowDatabasesNode:
+		entries, err := os.ReadDir(e.Engine.BaseDir)
+		if err != nil {
+			return ResultSet{}, fmt.Errorf("failed to list databases: %w", err)
+		}
+
+		var rows []storage.Row
+		for _, entry := range entries {
+			if entry.IsDir() {
+				rows = append(rows, storage.Row{Values: []interface{}{entry.Name()}})
+			}
+		}
+
+		return ResultSet{
+			Columns: []string{"Database"},
+			Rows:    rows,
+		}, nil
+
+	case *planner.ShowTablesNode:
+		if e.Engine.ActiveDB == "" {
+			return ResultSet{}, fmt.Errorf("no database selected")
+		}
+
+		dbDir := filepath.Join(e.Engine.BaseDir, e.Engine.ActiveDB)
+		entries, err := os.ReadDir(dbDir)
+		if err != nil {
+			return ResultSet{}, fmt.Errorf("failed to list tables: %w", err)
+		}
+
+		var rows []storage.Row
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".db") {
+				tableName := strings.TrimSuffix(entry.Name(), ".db")
+				rows = append(rows, storage.Row{Values: []interface{}{tableName}})
+			}
+		}
+
+		return ResultSet{
+			Columns: []string{"Table"},
+			Rows:    rows,
+		}, nil
+
+	case *planner.DropTableNode:
+		table, ok := e.Tables[n.TableName]
+		if !ok {
+			return ResultSet{}, fmt.Errorf("table not found: %s", n.TableName)
+		}
+
+		if e.Engine.ActiveDB == "" {
+			return ResultSet{}, fmt.Errorf("no database selected")
+		}
+
+		// Close the pager
+		if err := table.Pager.Close(); err != nil {
+			return ResultSet{}, fmt.Errorf("failed to close table: %w", err)
+		}
+
+		// Delete the .db file
+		dbPath := filepath.Join(e.Engine.BaseDir, e.Engine.ActiveDB, n.TableName+".db")
+		if err := os.Remove(dbPath); err != nil && !os.IsNotExist(err) {
+			return ResultSet{}, fmt.Errorf("failed to delete table file: %w", err)
+		}
+
+		// Delete the .json schema file
+		schemaPath := filepath.Join(e.Engine.BaseDir, e.Engine.ActiveDB, n.TableName+".json")
+		if err := os.Remove(schemaPath); err != nil && !os.IsNotExist(err) {
+			return ResultSet{}, fmt.Errorf("failed to delete schema file: %w", err)
+		}
+
+		delete(e.Tables, n.TableName)
+		return ResultSet{}, nil
+
+	case *planner.DropDatabaseNode:
+		if e.Engine.ActiveDB != n.DatabaseName {
+			return ResultSet{}, fmt.Errorf("cannot drop database '%s' because it is not the active database. Use '%s' first", n.DatabaseName, n.DatabaseName)
+		}
+
+		// Close all table pagers
+		for _, tbl := range e.Tables {
+			tbl.Pager.Close()
+		}
+
+		// Delete the entire database directory
+		if err := e.Engine.DropDatabase(n.DatabaseName); err != nil {
+			return ResultSet{}, fmt.Errorf("failed to drop database: %w", err)
+		}
+
+		e.Tables = make(map[string]*storage.Table)
+		e.Engine.ActiveDB = ""
+		return ResultSet{}, nil
+
 	case *planner.CreateDatabaseNode:
 		err := e.Engine.CreateDatabase(n.DatabaseName)
 		if err != nil {
