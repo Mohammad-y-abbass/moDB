@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -584,6 +585,89 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 
 		return ResultSet{}, nil
 
+	case *planner.SortNode:
+		res, err := e.Execute(n.Child)
+		if err != nil {
+			return ResultSet{}, err
+		}
+		table := e.getTableFromPlan(n.Child)
+		if table == nil {
+			return ResultSet{}, fmt.Errorf("could not determine table for sort")
+		}
+
+		sort.SliceStable(res.Rows, func(i, j int) bool {
+			for _, sortExpr := range n.OrderBy {
+				colIdx := -1
+				for idx, c := range table.Schema.Columns {
+					if c.Name == sortExpr.Column {
+						colIdx = idx
+						break
+					}
+				}
+				if colIdx < 0 {
+					continue
+				}
+
+				a, b := res.Rows[i].Values[colIdx], res.Rows[j].Values[colIdx]
+				var less bool
+
+				switch va := a.(type) {
+				case int32:
+					vb, ok := b.(int32)
+					if !ok {
+						continue
+					}
+					less = va < vb
+				case string:
+					vb, ok := b.(string)
+					if !ok {
+						continue
+					}
+					less = va < vb
+				default:
+					continue
+				}
+
+				if sortExpr.Direction == "DESC" {
+					less = !less
+				}
+
+				if less {
+					return true
+				}
+				// Equal → continue to next sort expression
+				// Not equal and not less → a > b, so i comes after j
+				if a != b {
+					return false
+				}
+			}
+			return false
+		})
+
+		return res, nil
+
+	case *planner.LimitNode:
+		res, err := e.Execute(n.Child)
+		if err != nil {
+			return ResultSet{}, err
+		}
+
+		start := n.Offset
+		if start < 0 {
+			start = 0
+		}
+		if start > len(res.Rows) {
+			start = len(res.Rows)
+		}
+
+		end := len(res.Rows)
+		if n.Limit > 0 && start+n.Limit < end {
+			end = start + n.Limit
+		}
+
+		res.Rows = res.Rows[start:end]
+		return res, nil
+
 	case *planner.JoinNode:
 		return e.executeJoin(n)
 	}
@@ -598,6 +682,10 @@ func (e *Executor) getTableFromPlan(plan planner.PlanNode) *storage.Table {
 	case *planner.FilterNode:
 		return e.getTableFromPlan(n.Child)
 	case *planner.ProjectNode:
+		return e.getTableFromPlan(n.Child)
+	case *planner.SortNode:
+		return e.getTableFromPlan(n.Child)
+	case *planner.LimitNode:
 		return e.getTableFromPlan(n.Child)
 	}
 	return nil

@@ -150,6 +150,50 @@ func TestJoinClause(t *testing.T) {
 	}
 }
 
+func TestSortExpression(t *testing.T) {
+	se := SortExpression{Column: "name", Direction: "DESC"}
+	if se.Column != "name" || se.Direction != "DESC" {
+		t.Errorf("SortExpression fields mismatch")
+	}
+}
+
+func TestSelectStatementWithOrderBy(t *testing.T) {
+	sel := &SelectStatement{
+		Token:   lexer.Token{Type: lexer.SELECT_TOKEN, Value: "SELECT"},
+		Columns: []string{"*"},
+		Table:   "users",
+		OrderBy: []SortExpression{
+			{Column: "name", Direction: "ASC"},
+			{Column: "age", Direction: "DESC"},
+		},
+	}
+	if len(sel.OrderBy) != 2 {
+		t.Errorf("expected 2 sort expressions, got %d", len(sel.OrderBy))
+	}
+	if sel.OrderBy[0].Column != "name" || sel.OrderBy[0].Direction != "ASC" {
+		t.Errorf("first sort expr mismatch")
+	}
+	if sel.OrderBy[1].Column != "age" || sel.OrderBy[1].Direction != "DESC" {
+		t.Errorf("second sort expr mismatch")
+	}
+}
+
+func TestSelectStatementWithLimitOffset(t *testing.T) {
+	sel := &SelectStatement{
+		Token:   lexer.Token{Type: lexer.SELECT_TOKEN, Value: "SELECT"},
+		Columns: []string{"*"},
+		Table:   "users",
+		Limit:   10,
+		Offset:  5,
+	}
+	if sel.Limit != 10 {
+		t.Errorf("expected limit 10, got %d", sel.Limit)
+	}
+	if sel.Offset != 5 {
+		t.Errorf("expected offset 5, got %d", sel.Offset)
+	}
+}
+
 func TestSelectStatementWithJoin(t *testing.T) {
 	sel := &SelectStatement{
 		Token:   lexer.Token{Type: lexer.SELECT_TOKEN, Value: "SELECT"},

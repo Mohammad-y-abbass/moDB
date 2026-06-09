@@ -935,6 +935,137 @@ func TestParseDropInvalid(t *testing.T) {
 	}
 }
 
+func TestParseOrderBy(t *testing.T) {
+	input := "SELECT * FROM users ORDER BY name"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.SelectStatement)
+	if len(stmt.OrderBy) != 1 {
+		t.Fatalf("expected 1 ORDER BY expr, got %d", len(stmt.OrderBy))
+	}
+	if stmt.OrderBy[0].Column != "name" || stmt.OrderBy[0].Direction != "ASC" {
+		t.Errorf("expected name ASC, got %s %s", stmt.OrderBy[0].Column, stmt.OrderBy[0].Direction)
+	}
+}
+
+func TestParseOrderByDesc(t *testing.T) {
+	input := "SELECT * FROM users ORDER BY name DESC"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.SelectStatement)
+	if len(stmt.OrderBy) != 1 {
+		t.Fatalf("expected 1 ORDER BY expr, got %d", len(stmt.OrderBy))
+	}
+	if stmt.OrderBy[0].Direction != "DESC" {
+		t.Errorf("expected DESC, got %s", stmt.OrderBy[0].Direction)
+	}
+}
+
+func TestParseOrderByMultiple(t *testing.T) {
+	input := "SELECT * FROM users ORDER BY name ASC, age DESC"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.SelectStatement)
+	if len(stmt.OrderBy) != 2 {
+		t.Fatalf("expected 2 ORDER BY expr, got %d", len(stmt.OrderBy))
+	}
+	if stmt.OrderBy[0].Column != "name" || stmt.OrderBy[0].Direction != "ASC" {
+		t.Errorf("first expr mismatch: %s %s", stmt.OrderBy[0].Column, stmt.OrderBy[0].Direction)
+	}
+	if stmt.OrderBy[1].Column != "age" || stmt.OrderBy[1].Direction != "DESC" {
+		t.Errorf("second expr mismatch: %s %s", stmt.OrderBy[1].Column, stmt.OrderBy[1].Direction)
+	}
+}
+
+func TestParseLimit(t *testing.T) {
+	input := "SELECT * FROM users LIMIT 10"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.SelectStatement)
+	if stmt.Limit != 10 {
+		t.Errorf("expected limit 10, got %d", stmt.Limit)
+	}
+}
+
+func TestParseOffset(t *testing.T) {
+	input := "SELECT * FROM users OFFSET 5"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.SelectStatement)
+	if stmt.Offset != 5 {
+		t.Errorf("expected offset 5, got %d", stmt.Offset)
+	}
+}
+
+func TestParseLimitOffset(t *testing.T) {
+	input := "SELECT * FROM users LIMIT 10 OFFSET 5"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.SelectStatement)
+	if stmt.Limit != 10 {
+		t.Errorf("expected limit 10, got %d", stmt.Limit)
+	}
+	if stmt.Offset != 5 {
+		t.Errorf("expected offset 5, got %d", stmt.Offset)
+	}
+}
+
+func TestParseFullSelect(t *testing.T) {
+	input := "SELECT name, age FROM users WHERE age > 18 ORDER BY name DESC LIMIT 5 OFFSET 2"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.SelectStatement)
+	if len(stmt.Columns) != 2 {
+		t.Errorf("expected 2 columns, got %d", len(stmt.Columns))
+	}
+	if stmt.Table != "users" {
+		t.Errorf("expected users, got %s", stmt.Table)
+	}
+	if stmt.Where == nil || stmt.Where.Left != "age" || stmt.Where.Op != ">" || stmt.Where.Right != "18" {
+		t.Errorf("where mismatch")
+	}
+	if len(stmt.OrderBy) != 1 || stmt.OrderBy[0].Column != "name" || stmt.OrderBy[0].Direction != "DESC" {
+		t.Errorf("order by mismatch")
+	}
+	if stmt.Limit != 5 {
+		t.Errorf("expected limit 5, got %d", stmt.Limit)
+	}
+	if stmt.Offset != 2 {
+		t.Errorf("expected offset 2, got %d", stmt.Offset)
+	}
+}
+
+func TestParseOrderByNoBy(t *testing.T) {
+	input := "SELECT * FROM users ORDER name"
+	l := lexer.New(input)
+	p := New(l)
+	p.ParseProgram()
+	if len(p.Errors()) == 0 {
+		t.Error("expected error for ORDER without BY")
+	}
+}
+
 func TestParserNewInitializesCorrectly(t *testing.T) {
 	l := lexer.New("SELECT * FROM users")
 	p := New(l)

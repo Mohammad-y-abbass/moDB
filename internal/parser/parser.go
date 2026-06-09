@@ -171,6 +171,80 @@ func (p *Parser) parseSelectStatement() *ast.SelectStatement {
 		stmt.Where = p.parseWhereClause()
 	}
 
+	// Parse optional ORDER BY clause
+	if p.peekToken.Type == lexer.ORDER_TOKEN {
+		p.nextToken() // move to ORDER
+		if p.peekToken.Type != lexer.BY_TOKEN {
+			p.addError(fmt.Sprintf("Expected BY after ORDER at line %d, column %d",
+				p.peekToken.Line, p.peekToken.Col))
+			return nil
+		}
+		p.nextToken() // move to BY
+		p.nextToken() // move to first column
+
+		for {
+			if p.currentToken.Type != lexer.IDENTIFIER {
+				p.addError(fmt.Sprintf("Expected column name in ORDER BY at line %d, column %d",
+					p.currentToken.Line, p.currentToken.Col))
+				return nil
+			}
+			expr := ast.SortExpression{Column: p.currentToken.Value, Direction: "ASC"}
+
+			if p.peekToken.Type == lexer.ASC_TOKEN {
+				p.nextToken()
+				expr.Direction = "ASC"
+			} else if p.peekToken.Type == lexer.DESC_TOKEN {
+				p.nextToken()
+				expr.Direction = "DESC"
+			}
+
+			stmt.OrderBy = append(stmt.OrderBy, expr)
+
+			if p.peekToken.Type == lexer.COMMA {
+				p.nextToken() // move to comma
+				p.nextToken() // move to next column
+			} else {
+				break
+			}
+		}
+	}
+
+	// Parse optional LIMIT clause
+	if p.peekToken.Type == lexer.LIMIT_TOKEN {
+		p.nextToken() // move to LIMIT
+		p.nextToken() // move to number
+		if p.currentToken.Type != lexer.NUMBER {
+			p.addError(fmt.Sprintf("Expected number after LIMIT at line %d, column %d",
+				p.currentToken.Line, p.currentToken.Col))
+			return nil
+		}
+		limit, err := strconv.Atoi(p.currentToken.Value)
+		if err != nil {
+			p.addError(fmt.Sprintf("Invalid LIMIT value at line %d, column %d",
+				p.currentToken.Line, p.currentToken.Col))
+			return nil
+		}
+		stmt.Limit = limit
+	}
+
+	// Parse optional OFFSET clause
+	if p.peekToken.Type == lexer.OFFSET_TOKEN {
+		p.nextToken() // move to OFFSET
+		p.nextToken() // move to number
+		if p.currentToken.Type != lexer.NUMBER {
+			p.addError(fmt.Sprintf("Expected number after OFFSET at line %d, column %d",
+				p.currentToken.Line, p.currentToken.Col))
+			return nil
+		}
+		offset, err := strconv.Atoi(p.currentToken.Value)
+		if err != nil {
+			p.addError(fmt.Sprintf("Invalid OFFSET value at line %d, column %d",
+				p.currentToken.Line, p.currentToken.Col))
+			return nil
+		}
+		stmt.Offset = offset
+	}
+
 	return stmt
 }
 

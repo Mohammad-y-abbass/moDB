@@ -1671,3 +1671,206 @@ func TestExecuteShowTablesNoDatabase(t *testing.T) {
 		t.Error("expected error for ShowTables with no active database")
 	}
 }
+
+// ── SortNode tests ────────────────────────────────────────────────────────
+
+func TestExecuteSortNode(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	// Insert some rows out of order
+	for _, val := range []int32{3, 1, 2} {
+		exec.Tables["users"].Insert([]interface{}{val, "user", val})
+	}
+
+	plan := &planner.SortNode{
+		Child:   &planner.ScanNode{TableName: "users"},
+		OrderBy: []ast.SortExpression{{Column: "id", Direction: "ASC"}},
+	}
+
+	result, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("SortNode should succeed: %v", err)
+	}
+
+	if len(result.Rows) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(result.Rows))
+	}
+
+	// Check sorted order
+	expected := []int32{1, 2, 3}
+	for i, exp := range expected {
+		got := result.Rows[i].Values[0].(int32)
+		if got != exp {
+			t.Errorf("row %d: expected %d, got %d", i, exp, got)
+		}
+	}
+}
+
+func TestExecuteSortNodeDesc(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	for _, val := range []int32{1, 2, 3} {
+		exec.Tables["users"].Insert([]interface{}{val, "user", val})
+	}
+
+	plan := &planner.SortNode{
+		Child:   &planner.ScanNode{TableName: "users"},
+		OrderBy: []ast.SortExpression{{Column: "id", Direction: "DESC"}},
+	}
+
+	result, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("SortNode DESC should succeed: %v", err)
+	}
+
+	expected := []int32{3, 2, 1}
+	for i, exp := range expected {
+		got := result.Rows[i].Values[0].(int32)
+		if got != exp {
+			t.Errorf("row %d: expected %d, got %d", i, exp, got)
+		}
+	}
+}
+
+func TestExecuteSortNodeMultipleColumns(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	// Insert rows with (id, name, age)
+	exec.Tables["users"].Insert([]interface{}{int32(2), "Alice", int32(30)})
+	exec.Tables["users"].Insert([]interface{}{int32(1), "Alice", int32(25)})
+	exec.Tables["users"].Insert([]interface{}{int32(3), "Bob", int32(20)})
+
+	plan := &planner.SortNode{
+		Child: &planner.ScanNode{TableName: "users"},
+		OrderBy: []ast.SortExpression{
+			{Column: "name", Direction: "ASC"},
+			{Column: "age", Direction: "ASC"},
+		},
+	}
+
+	result, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("SortNode multi-col should succeed: %v", err)
+	}
+
+	// Alice(25), Alice(30), Bob(20)
+	if result.Rows[0].Values[1].(string) != "Alice" || result.Rows[0].Values[2].(int32) != 25 {
+		t.Errorf("first row should be Alice 25")
+	}
+	if result.Rows[1].Values[1].(string) != "Alice" || result.Rows[1].Values[2].(int32) != 30 {
+		t.Errorf("second row should be Alice 30")
+	}
+	if result.Rows[2].Values[1].(string) != "Bob" {
+		t.Errorf("third row should be Bob")
+	}
+}
+
+// ── LimitNode tests ───────────────────────────────────────────────────────
+
+func TestExecuteLimitNode(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	for _, val := range []int32{1, 2, 3, 4, 5} {
+		exec.Tables["users"].Insert([]interface{}{val, "user", val})
+	}
+
+	plan := &planner.LimitNode{
+		Child: &planner.ScanNode{TableName: "users"},
+		Limit: 3,
+	}
+
+	result, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("LimitNode should succeed: %v", err)
+	}
+
+	if len(result.Rows) != 3 {
+		t.Errorf("expected 3 rows, got %d", len(result.Rows))
+	}
+}
+
+func TestExecuteLimitNodeWithOffset(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	for _, val := range []int32{1, 2, 3, 4, 5} {
+		exec.Tables["users"].Insert([]interface{}{val, "user", val})
+	}
+
+	plan := &planner.LimitNode{
+		Child:  &planner.ScanNode{TableName: "users"},
+		Limit:  2,
+		Offset: 2,
+	}
+
+	result, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("LimitNode with offset should succeed: %v", err)
+	}
+
+	if len(result.Rows) != 2 {
+		t.Errorf("expected 2 rows, got %d", len(result.Rows))
+	}
+	// With offset 2, should get values 3, 4
+	if result.Rows[0].Values[0].(int32) != 3 || result.Rows[1].Values[0].(int32) != 4 {
+		t.Errorf("unexpected rows after offset: %v, %v", result.Rows[0].Values[0], result.Rows[1].Values[0])
+	}
+}
+
+func TestExecuteLimitNodeOffsetExceedsRows(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	for _, val := range []int32{1, 2} {
+		exec.Tables["users"].Insert([]interface{}{val, "user", val})
+	}
+
+	plan := &planner.LimitNode{
+		Child:  &planner.ScanNode{TableName: "users"},
+		Offset: 10,
+	}
+
+	result, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("LimitNode with large offset should succeed: %v", err)
+	}
+
+	if len(result.Rows) != 0 {
+		t.Errorf("expected 0 rows, got %d", len(result.Rows))
+	}
+}
+
+func TestExecuteSortWithLimit(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	for _, val := range []int32{5, 3, 1, 4, 2} {
+		exec.Tables["users"].Insert([]interface{}{val, "user", val})
+	}
+
+	// Sort ASC then take LIMIT 2
+	sortPlan := &planner.SortNode{
+		Child:   &planner.ScanNode{TableName: "users"},
+		OrderBy: []ast.SortExpression{{Column: "id", Direction: "ASC"}},
+	}
+	limitPlan := &planner.LimitNode{
+		Child: sortPlan,
+		Limit: 2,
+	}
+
+	result, err := exec.Execute(limitPlan)
+	if err != nil {
+		t.Fatalf("sort+limit should succeed: %v", err)
+	}
+
+	if len(result.Rows) != 2 {
+		t.Errorf("expected 2 rows, got %d", len(result.Rows))
+	}
+	if result.Rows[0].Values[0].(int32) != 1 || result.Rows[1].Values[0].(int32) != 2 {
+		t.Errorf("expected first two sorted rows 1,2 but got %d,%d", result.Rows[0].Values[0], result.Rows[1].Values[0])
+	}
+}

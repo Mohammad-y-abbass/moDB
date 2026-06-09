@@ -16,6 +16,8 @@ func TestPlanNodeImplementations(t *testing.T) {
 		&UpdateNode{TableName: "users", Sets: map[string]string{"name": "john"}},
 		&DeleteNode{TableName: "users", Where: nil},
 		&CreateTableNode{TableName: "users"},
+		&SortNode{Child: &ScanNode{}, OrderBy: []ast.SortExpression{{Column: "name"}}},
+		&LimitNode{Child: &ScanNode{}, Limit: 10, Offset: 5},
 		&ShowDatabasesNode{},
 		&ShowTablesNode{},
 		&DropTableNode{TableName: "users"},
@@ -270,6 +272,83 @@ func TestGeneratePlanDeleteWithoutWhere(t *testing.T) {
 	}
 	if del.Where != nil {
 		t.Error("expected nil where for delete")
+	}
+}
+
+func TestGeneratePlanSelectWithOrderBy(t *testing.T) {
+	p := New()
+
+	stmt := &ast.SelectStatement{
+		Token:   lexer.Token{Type: lexer.SELECT_TOKEN, Value: "SELECT"},
+		Columns: []string{"*"},
+		Table:   "users",
+		OrderBy: []ast.SortExpression{
+			{Column: "name", Direction: "ASC"},
+		},
+	}
+
+	plan := p.GeneratePlan(stmt)
+	sortNode, ok := plan.(*SortNode)
+	if !ok {
+		t.Fatalf("expected *SortNode, got %T", plan)
+	}
+	if len(sortNode.OrderBy) != 1 || sortNode.OrderBy[0].Column != "name" {
+		t.Errorf("sort node mismatch: %+v", sortNode.OrderBy)
+	}
+	_, ok = sortNode.Child.(*ScanNode)
+	if !ok {
+		t.Fatalf("expected ScanNode as child of SortNode, got %T", sortNode.Child)
+	}
+}
+
+func TestGeneratePlanSelectWithLimitOffset(t *testing.T) {
+	p := New()
+
+	stmt := &ast.SelectStatement{
+		Token:   lexer.Token{Type: lexer.SELECT_TOKEN, Value: "SELECT"},
+		Columns: []string{"*"},
+		Table:   "users",
+		Limit:   5,
+		Offset:  2,
+	}
+
+	plan := p.GeneratePlan(stmt)
+	limitNode, ok := plan.(*LimitNode)
+	if !ok {
+		t.Fatalf("expected *LimitNode, got %T", plan)
+	}
+	if limitNode.Limit != 5 || limitNode.Offset != 2 {
+		t.Errorf("limit node mismatch: %+v", limitNode)
+	}
+	_, ok = limitNode.Child.(*ScanNode)
+	if !ok {
+		t.Fatalf("expected ScanNode as child of LimitNode, got %T", limitNode.Child)
+	}
+}
+
+func TestGeneratePlanSelectWithOrderByAndLimit(t *testing.T) {
+	p := New()
+
+	stmt := &ast.SelectStatement{
+		Token:   lexer.Token{Type: lexer.SELECT_TOKEN, Value: "SELECT"},
+		Columns: []string{"*"},
+		Table:   "users",
+		OrderBy: []ast.SortExpression{{Column: "name", Direction: "DESC"}},
+		Limit:   10,
+	}
+
+	plan := p.GeneratePlan(stmt)
+	limitNode, ok := plan.(*LimitNode)
+	if !ok {
+		t.Fatalf("expected *LimitNode wrapping SortNode, got %T", plan)
+	}
+	sortNode, ok := limitNode.Child.(*SortNode)
+	if !ok {
+		t.Fatalf("expected *SortNode below LimitNode, got %T", limitNode.Child)
+	}
+	_, ok = sortNode.Child.(*ScanNode)
+	if !ok {
+		t.Fatalf("expected ScanNode below SortNode")
 	}
 }
 

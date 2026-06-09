@@ -60,6 +60,21 @@ type CreateTableNode struct {
 
 func (n *CreateTableNode) PlanNode() {}
 
+type SortNode struct {
+	Child   PlanNode
+	OrderBy []ast.SortExpression
+}
+
+func (n *SortNode) PlanNode() {}
+
+type LimitNode struct {
+	Child  PlanNode
+	Limit  int
+	Offset int
+}
+
+func (n *LimitNode) PlanNode() {}
+
 type ShowDatabasesNode struct{}
 
 func (n *ShowDatabasesNode) PlanNode() {}
@@ -166,6 +181,19 @@ func (p *Planner) GeneratePlan(stmt ast.Statement) PlanNode {
 			node = &ProjectNode{
 				Child:   node,
 				Columns: s.Columns,
+			}
+		}
+		if len(s.OrderBy) > 0 {
+			node = &SortNode{
+				Child:   node,
+				OrderBy: s.OrderBy,
+			}
+		}
+		if s.Limit > 0 || s.Offset > 0 {
+			node = &LimitNode{
+				Child:  node,
+				Limit:  s.Limit,
+				Offset: s.Offset,
 			}
 		}
 		return node

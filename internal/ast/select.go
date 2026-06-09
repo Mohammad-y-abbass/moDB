@@ -9,12 +9,20 @@ type JoinClause struct {
 	RightKey string // qualified column reference on the right, e.g. "users.id"
 }
 
+type SortExpression struct {
+	Column    string
+	Direction string // "ASC" or "DESC" (default "ASC")
+}
+
 type SelectStatement struct {
 	Token   lexer.Token
 	Columns []string
 	Table   string
 	Join    *JoinClause // nil for plain SELECT
 	Where   *WhereClause
+	OrderBy []SortExpression
+	Limit   int // -1 means no limit
+	Offset  int // 0 means no offset
 }
 
 func (ss *SelectStatement) StatementNode() {}

@@ -83,6 +83,18 @@ func (l *Lexer) ReadIdentifier() Token {
 		return Token{Type: INTO_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "SET":
 		return Token{Type: SET_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "ORDER":
+		return Token{Type: ORDER_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "BY":
+		return Token{Type: BY_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "ASC":
+		return Token{Type: ASC_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "DESC":
+		return Token{Type: DESC_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "LIMIT":
+		return Token{Type: LIMIT_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "OFFSET":
+		return Token{Type: OFFSET_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "SHOW":
 		return Token{Type: SHOW_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "DROP":
