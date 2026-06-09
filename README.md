@@ -2,7 +2,7 @@
 
 ## Overview
 
-**moDB** (Mohammad's Database) is a persistent, SQL-compatible relational database management system (RDBMS) written in Go.
+**moDB** is a persistent, SQL-compatible relational database management system (RDBMS) written in Go.
 
 Unlike many simple data stores that operate entirely in memory, **moDB** is designed to mimic the architecture of production-grade databases like PostgreSQL or SQLite, persisting data to disk using a custom storage engine.
 
