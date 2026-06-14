@@ -87,8 +87,9 @@ The **Executor** takes the plan and interacts with the storage engine to retriev
 - [ ] **Scalar Functions**: `UPPER()`, `LOWER()`, `LENGTH()`.
 - [ ] **Aggregate Functions**: `COUNT()`, `SUM()`, `AVG()`.
 - [ ] **GROUP BY & HAVING** — For complex data analysis.
-- [ ] **ORDER BY / LIMIT / OFFSET** — For sorted and paginated results.
-- [ ] **LIKE / IN / BETWEEN** operators.
+- [x] **ORDER BY / LIMIT / OFFSET** — Sorted and paginated results.
+- [x] **LIKE / IN / BETWEEN / IS NULL** — Advanced WHERE operators.
+- [x] **DISTINCT** — Deduplicate result rows.
 - [ ] **Subqueries / Nested SELECT**.
 
 ### Reliability (ACID)

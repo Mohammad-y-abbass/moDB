@@ -83,6 +83,20 @@ func (l *Lexer) ReadIdentifier() Token {
 		return Token{Type: INTO_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "SET":
 		return Token{Type: SET_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "AND":
+		return Token{Type: AND_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "LIKE":
+		return Token{Type: LIKE_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "IN":
+		return Token{Type: IN_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "BETWEEN":
+		return Token{Type: BETWEEN_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "IS":
+		return Token{Type: IS_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "DISTINCT":
+		return Token{Type: DISTINCT_TOKEN, Value: value, Line: l.Line, Col: startCol}
+	case "DEFAULT":
+		return Token{Type: DEFAULT_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "ORDER":
 		return Token{Type: ORDER_TOKEN, Value: value, Line: l.Line, Col: startCol}
 	case "BY":

@@ -237,6 +237,171 @@ func TestExecuteFilterNodeNullComparison(t *testing.T) {
 	}
 }
 
+func TestExecuteFilterNodeLike(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	exec.Tables["users"].Insert([]interface{}{int32(1), "Alice", int32(30)})
+	exec.Tables["users"].Insert([]interface{}{int32(2), "Bob", int32(25)})
+	exec.Tables["users"].Insert([]interface{}{int32(3), "Charlie", int32(35)})
+
+	tests := []struct {
+		pattern string
+		expect  int
+	}{
+		{"A%", 1},
+		{"%e", 2},  // Alice, Charlie
+		{"%ob%", 1}, // Bob
+		{"%x%", 0},
+		{"Alice", 1},
+	}
+
+	for _, tt := range tests {
+		plan := &planner.FilterNode{
+			Child: &planner.ScanNode{TableName: "users"},
+			Left:  "name",
+			Op:    "LIKE",
+			Right: tt.pattern,
+		}
+		result, err := exec.Execute(plan)
+		if err != nil {
+			t.Fatalf("LIKE %s: Execute failed: %v", tt.pattern, err)
+		}
+		if len(result.Rows) != tt.expect {
+			t.Errorf("LIKE %s: expected %d rows, got %d", tt.pattern, tt.expect, len(result.Rows))
+		}
+	}
+}
+
+func TestExecuteFilterNodeIn(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	exec.Tables["users"].Insert([]interface{}{int32(1), "Alice", int32(30)})
+	exec.Tables["users"].Insert([]interface{}{int32(2), "Bob", int32(25)})
+	exec.Tables["users"].Insert([]interface{}{int32(3), "Charlie", int32(35)})
+
+	plan := &planner.FilterNode{
+		Child:  &planner.ScanNode{TableName: "users"},
+		Left:   "id",
+		Op:     "IN",
+		InList: []string{"1", "3"},
+	}
+	result, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("Execute IN failed: %v", err)
+	}
+	if len(result.Rows) != 2 {
+		t.Errorf("expected 2 rows for IN (1,3), got %d", len(result.Rows))
+	}
+}
+
+func TestExecuteFilterNodeBetween(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	exec.Tables["users"].Insert([]interface{}{int32(1), "Alice", int32(30)})
+	exec.Tables["users"].Insert([]interface{}{int32(2), "Bob", int32(25)})
+	exec.Tables["users"].Insert([]interface{}{int32(3), "Charlie", int32(35)})
+	exec.Tables["users"].Insert([]interface{}{int32(4), "Dave", int32(99)})
+
+	plan := &planner.FilterNode{
+		Child:  &planner.ScanNode{TableName: "users"},
+		Left:   "age",
+		Op:     "BETWEEN",
+		Right:  "25",
+		Right2: "35",
+	}
+	result, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("Execute BETWEEN failed: %v", err)
+	}
+	if len(result.Rows) != 3 {
+		t.Errorf("expected 3 rows for BETWEEN 25 AND 35, got %d", len(result.Rows))
+	}
+}
+
+func TestExecuteFilterNodeIsNull(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	exec.Tables["users"].Insert([]interface{}{int32(1), nil, int32(30)})
+	exec.Tables["users"].Insert([]interface{}{int32(2), "Bob", int32(25)})
+
+	plan := &planner.FilterNode{
+		Child: &planner.ScanNode{TableName: "users"},
+		Left:  "name",
+		Op:    "IS NULL",
+	}
+	result, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("Execute IS NULL failed: %v", err)
+	}
+	if len(result.Rows) != 1 {
+		t.Errorf("expected 1 row for IS NULL, got %d", len(result.Rows))
+	}
+}
+
+func TestExecuteFilterNodeIsNotNull(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	exec.Tables["users"].Insert([]interface{}{int32(1), nil, int32(30)})
+	exec.Tables["users"].Insert([]interface{}{int32(2), "Bob", int32(25)})
+
+	plan := &planner.FilterNode{
+		Child: &planner.ScanNode{TableName: "users"},
+		Left:  "name",
+		Op:    "IS NOT NULL",
+	}
+	result, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("Execute IS NOT NULL failed: %v", err)
+	}
+	if len(result.Rows) != 1 {
+		t.Errorf("expected 1 row for IS NOT NULL, got %d", len(result.Rows))
+	}
+}
+
+func TestExecuteDistinctNode(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	exec.Tables["users"].Insert([]interface{}{int32(1), "Alice", int32(30)})
+	exec.Tables["users"].Insert([]interface{}{int32(2), "Bob", int32(25)})
+	exec.Tables["users"].Insert([]interface{}{int32(3), "Alice", int32(30)})
+	exec.Tables["users"].Insert([]interface{}{int32(4), "Charlie", int32(35)})
+
+	// Duplicate over name+age (different id)
+	plan := &planner.DistinctNode{
+		Child: &planner.ScanNode{TableName: "users"},
+	}
+	result, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("Execute DistinctNode failed: %v", err)
+	}
+	// All rows have distinct id, so all 4 should remain
+	if len(result.Rows) != 4 {
+		t.Errorf("expected 4 rows (distinct ids), got %d", len(result.Rows))
+	}
+
+	// Now test with projection: SELECT DISTINCT name FROM users
+	// After projection, "Alice" appears twice but DISTINCT should deduplicate
+	projectPlan := &planner.DistinctNode{
+		Child: &planner.ProjectNode{
+			Child:   &planner.ScanNode{TableName: "users"},
+			Columns: []string{"name"},
+		},
+	}
+	result, err = exec.Execute(projectPlan)
+	if err != nil {
+		t.Fatalf("Execute DistinctNode+Project failed: %v", err)
+	}
+	if len(result.Rows) != 3 {
+		t.Errorf("expected 3 distinct names, got %d", len(result.Rows))
+	}
+}
+
 // ── ProjectNode tests ───────────────────────────────────────────────────────
 
 func TestExecuteProjectNode(t *testing.T) {
@@ -1841,6 +2006,88 @@ func TestExecuteLimitNodeOffsetExceedsRows(t *testing.T) {
 
 	if len(result.Rows) != 0 {
 		t.Errorf("expected 0 rows, got %d", len(result.Rows))
+	}
+}
+
+func TestCreateTableWithDefault(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	// Plan: CREATE TABLE with DEFAULT
+	plan := &planner.CreateTableNode{
+		TableName: "products",
+		Columns: []ast.ColumnDefinition{
+			{Name: "id", DataType: "INT", IsNullable: false, IsUnique: true, IsPrimaryKey: true},
+			{Name: "name", DataType: "TEXT", IsNullable: false, Default: "unnamed"},
+			{Name: "price", DataType: "INT", IsNullable: true, Default: "0"},
+		},
+	}
+
+	_, err := exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("CreateTable with defaults should succeed: %v", err)
+	}
+
+	tbl, ok := exec.Tables["products"]
+	if !ok {
+		t.Fatal("products table should exist")
+	}
+
+	// Verify Default was stored in schema
+	if tbl.Schema.Columns[1].Default != "unnamed" {
+		t.Errorf("expected default 'unnamed' for name column, got %q", tbl.Schema.Columns[1].Default)
+	}
+	if tbl.Schema.Columns[2].Default != "0" {
+		t.Errorf("expected default '0' for price column, got %q", tbl.Schema.Columns[2].Default)
+	}
+}
+
+func TestInsertWithDefaults(t *testing.T) {
+	exec, cleanup := setupExecutor(t)
+	defer cleanup()
+
+	// First create the table with defaults (manually, since we need storage columns)
+	schema := storage.NewSchema([]storage.Column{
+		{Name: "id", Type: storage.TypeInt32, IsNullable: false, IsUnique: true, IsPrimaryKey: true},
+		{Name: "name", Type: storage.TypeFixedText, Size: 32, IsNullable: false, Default: "unnamed"},
+		{Name: "price", Type: storage.TypeInt32, IsNullable: true, Default: "0"},
+	})
+
+	dbPath := filepath.Join(exec.Engine.BaseDir, exec.Engine.ActiveDB, "products.db")
+	pager, err := storage.NewPager(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create pager: %v", err)
+	}
+	table := storage.NewTable(pager, schema)
+	exec.RegisterTable("products", table)
+
+	// Insert with explicit columns, omitting ones with defaults
+	plan := &planner.InsertNode{
+		TableName: "products",
+		Columns:   []string{"id"},
+		Values:    []string{"1"},
+	}
+
+	_, err = exec.Execute(plan)
+	if err != nil {
+		t.Fatalf("Insert with defaults should succeed: %v", err)
+	}
+
+	// Verify the row has default values
+	result, err := exec.Execute(&planner.ScanNode{TableName: "products"})
+	if err != nil {
+		t.Fatalf("Scan should succeed: %v", err)
+	}
+
+	if len(result.Rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(result.Rows))
+	}
+
+	if result.Rows[0].Values[1].(string) != "unnamed" {
+		t.Errorf("expected name 'unnamed', got %v", result.Rows[0].Values[1])
+	}
+	if result.Rows[0].Values[2].(int32) != 0 {
+		t.Errorf("expected price 0, got %v", result.Rows[0].Values[2])
 	}
 }
 

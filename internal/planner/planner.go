@@ -15,10 +15,12 @@ type ScanNode struct {
 func (n *ScanNode) PlanNode() {}
 
 type FilterNode struct {
-	Child PlanNode
-	Left  string
-	Op    string
-	Right string
+	Child  PlanNode
+	Left   string
+	Op     string
+	Right  string
+	Right2 string   // upper bound for BETWEEN
+	InList []string // value list for IN
 }
 
 func (n *FilterNode) PlanNode() {}
@@ -74,6 +76,12 @@ type LimitNode struct {
 }
 
 func (n *LimitNode) PlanNode() {}
+
+type DistinctNode struct {
+	Child PlanNode
+}
+
+func (n *DistinctNode) PlanNode() {}
 
 type ShowDatabasesNode struct{}
 
@@ -171,10 +179,12 @@ func (p *Planner) GeneratePlan(stmt ast.Statement) PlanNode {
 		var node PlanNode = &ScanNode{TableName: s.Table}
 		if s.Where != nil {
 			node = &FilterNode{
-				Child: node,
-				Left:  s.Where.Left,
-				Op:    s.Where.Op,
-				Right: s.Where.Right,
+				Child:   node,
+				Left:    s.Where.Left,
+				Op:      s.Where.Op,
+				Right:   s.Where.Right,
+				Right2:  s.Where.Right2,
+				InList:  s.Where.InList,
 			}
 		}
 		if len(s.Columns) > 0 && s.Columns[0] != "*" {
@@ -195,6 +205,9 @@ func (p *Planner) GeneratePlan(stmt ast.Statement) PlanNode {
 				Limit:  s.Limit,
 				Offset: s.Offset,
 			}
+		}
+		if s.Distinct {
+			node = &DistinctNode{Child: node}
 		}
 		return node
 	case *ast.InsertStatement:

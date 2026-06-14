@@ -18,6 +18,7 @@ func TestPlanNodeImplementations(t *testing.T) {
 		&CreateTableNode{TableName: "users"},
 		&SortNode{Child: &ScanNode{}, OrderBy: []ast.SortExpression{{Column: "name"}}},
 		&LimitNode{Child: &ScanNode{}, Limit: 10, Offset: 5},
+		&DistinctNode{Child: &ScanNode{}},
 		&ShowDatabasesNode{},
 		&ShowTablesNode{},
 		&DropTableNode{TableName: "users"},
@@ -349,6 +350,34 @@ func TestGeneratePlanSelectWithOrderByAndLimit(t *testing.T) {
 	_, ok = sortNode.Child.(*ScanNode)
 	if !ok {
 		t.Fatalf("expected ScanNode below SortNode")
+	}
+}
+
+func TestGeneratePlanSelectDistinct(t *testing.T) {
+	p := New()
+
+	stmt := &ast.SelectStatement{
+		Token:    lexer.Token{Type: lexer.SELECT_TOKEN, Value: "SELECT"},
+		Distinct: true,
+		Columns:  []string{"name"},
+		Table:    "users",
+	}
+
+	plan := p.GeneratePlan(stmt)
+	distinctNode, ok := plan.(*DistinctNode)
+	if !ok {
+		t.Fatalf("expected *DistinctNode, got %T", plan)
+	}
+	projNode, ok := distinctNode.Child.(*ProjectNode)
+	if !ok {
+		t.Fatalf("expected *ProjectNode below DistinctNode, got %T", distinctNode.Child)
+	}
+	if len(projNode.Columns) != 1 || projNode.Columns[0] != "name" {
+		t.Errorf("projection mismatch: %v", projNode.Columns)
+	}
+	_, ok = projNode.Child.(*ScanNode)
+	if !ok {
+		t.Fatalf("expected ScanNode below ProjectNode")
 	}
 }
 

@@ -21,6 +21,7 @@ type Column struct {
 	IsNullable   bool           `json:"is_nullable"`
 	IsUnique     bool           `json:"is_unique"`
 	IsPrimaryKey bool           `json:"is_primary_key"`
+	Default      string         `json:"default,omitempty"`
 	References   *ForeignKeyRef `json:"references,omitempty"`
 }
 

@@ -183,6 +183,8 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 			for i, col := range table.Schema.Columns {
 				if val, exists := valMap[col.Name]; exists {
 					fullValues[i] = val
+				} else if col.Default != "" {
+					fullValues[i] = col.Default
 				} else {
 					fullValues[i] = "NULL"
 				}
@@ -555,6 +557,7 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 				IsNullable:   c.IsNullable,
 				IsUnique:     c.IsUnique,
 				IsPrimaryKey: c.IsPrimaryKey,
+				Default:      c.Default,
 				References: func() *storage.ForeignKeyRef {
 					if c.References == nil {
 						return nil
@@ -668,6 +671,28 @@ func (e *Executor) Execute(plan planner.PlanNode) (ResultSet, error) {
 		res.Rows = res.Rows[start:end]
 		return res, nil
 
+	case *planner.DistinctNode:
+		res, err := e.Execute(n.Child)
+		if err != nil {
+			return ResultSet{}, err
+		}
+
+		seen := make(map[string]bool)
+		var distinct []storage.Row
+		for _, row := range res.Rows {
+			var parts []string
+			for _, v := range row.Values {
+				parts = append(parts, fmt.Sprintf("%v", v))
+			}
+			key := strings.Join(parts, "\x00")
+			if !seen[key] {
+				seen[key] = true
+				distinct = append(distinct, row)
+			}
+		}
+		res.Rows = distinct
+		return res, nil
+
 	case *planner.JoinNode:
 		return e.executeJoin(n)
 	}
@@ -687,11 +712,19 @@ func (e *Executor) getTableFromPlan(plan planner.PlanNode) *storage.Table {
 		return e.getTableFromPlan(n.Child)
 	case *planner.LimitNode:
 		return e.getTableFromPlan(n.Child)
+	case *planner.DistinctNode:
+		return e.getTableFromPlan(n.Child)
 	}
 	return nil
 }
 
 func (e *Executor) evaluateFilter(row storage.Row, schema *storage.Schema, filter *planner.FilterNode) (bool, error) {
+	switch filter.Op {
+	case "IN":
+		return e.evaluateInCondition(row, schema, filter.Left, filter.InList)
+	case "BETWEEN":
+		return e.evaluateBetweenCondition(row, schema, filter.Left, filter.Right, filter.Right2)
+	}
 	return e.evaluateCondition(row, schema, filter.Left, filter.Op, filter.Right)
 }
 
@@ -709,6 +742,14 @@ func (e *Executor) evaluateCondition(row storage.Row, schema *storage.Schema, le
 	}
 
 	val := row.Values[colIdx]
+
+	// IS NULL / IS NOT NULL
+	if op == "IS NULL" {
+		return val == nil, nil
+	}
+	if op == "IS NOT NULL" {
+		return val != nil, nil
+	}
 
 	if val == nil {
 		if strings.ToUpper(right) == "NULL" {
@@ -778,10 +819,65 @@ func (e *Executor) evaluateCondition(row storage.Row, schema *storage.Schema, le
 			return v >= rhs, nil
 		case "<=":
 			return v <= rhs, nil
+		case "LIKE":
+			return matchLike(v, rhs), nil
 		}
 	}
 
 	return false, nil
+}
+
+func matchLike(value, pattern string) bool {
+	// Simple LIKE: only supports % wildcard (at start, end, or both)
+	// Convert SQL LIKE pattern to a simple check
+	if len(pattern) == 0 {
+		return value == ""
+	}
+
+	// Pattern starting and ending with %
+	if strings.HasPrefix(pattern, "%") && strings.HasSuffix(pattern, "%") && len(pattern) >= 2 {
+		mid := pattern[1 : len(pattern)-1]
+		return strings.Contains(value, mid)
+	}
+
+	// Pattern ending with %
+	if strings.HasSuffix(pattern, "%") {
+		prefix := pattern[:len(pattern)-1]
+		return strings.HasPrefix(value, prefix)
+	}
+
+	// Pattern starting with %
+	if strings.HasPrefix(pattern, "%") {
+		suffix := pattern[1:]
+		return strings.HasSuffix(value, suffix)
+	}
+
+	// No wildcards — exact match
+	return value == pattern
+}
+
+func (e *Executor) evaluateInCondition(row storage.Row, schema *storage.Schema, left string, inList []string) (bool, error) {
+	for _, item := range inList {
+		match, err := e.evaluateCondition(row, schema, left, "=", item)
+		if err != nil {
+			return false, err
+		}
+		if match {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (e *Executor) evaluateBetweenCondition(row storage.Row, schema *storage.Schema, left, lower, upper string) (bool, error) {
+	matchLower, err := e.evaluateCondition(row, schema, left, ">=", lower)
+	if err != nil {
+		return false, err
+	}
+	if !matchLower {
+		return false, nil
+	}
+	return e.evaluateCondition(row, schema, left, "<=", upper)
 }
 
 func (e *Executor) applyProjection(rows []storage.Row, schema *storage.Schema, columns []string) ([]storage.Row, error) {

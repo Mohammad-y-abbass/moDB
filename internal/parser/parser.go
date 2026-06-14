@@ -91,6 +91,12 @@ func (p *Parser) parseSelectStatement() *ast.SelectStatement {
 
 	p.nextToken()
 
+	// Check for DISTINCT keyword
+	if p.currentToken.Type == lexer.DISTINCT_TOKEN {
+		stmt.Distinct = true
+		p.nextToken()
+	}
+
 	// Check for columns or asterisk
 	switch p.currentToken.Type {
 	case lexer.ASTERISK:
@@ -573,6 +579,17 @@ func (p *Parser) parseColumnDefinition() ast.ColumnDefinition {
 		}
 	}
 
+	// Parse optional DEFAULT clause
+	if p.peekToken.Type == lexer.DEFAULT_TOKEN {
+		p.nextToken() // move to DEFAULT
+		p.nextToken() // move to value
+		if p.currentToken.Type != lexer.NUMBER && p.currentToken.Type != lexer.STRING && p.currentToken.Type != lexer.IDENTIFIER {
+			p.addError(fmt.Sprintf("Expected default value for column %s, got %s", col.Name, p.currentToken.Value))
+			return ast.ColumnDefinition{}
+		}
+		col.Default = p.currentToken.Value
+	}
+
 	// Parse optional inline FK: REFERENCES parent_table(parent_col)
 	if p.peekToken.Type == lexer.REFERENCES_TOKEN {
 		p.nextToken() // move to REFERENCES
@@ -618,6 +635,91 @@ func (p *Parser) parseWhereClause() *ast.WhereClause {
 	where.Left = p.currentToken.Value
 
 	p.nextToken()
+
+	// IS NULL / IS NOT NULL
+	if p.currentToken.Type == lexer.IS_TOKEN {
+		p.nextToken()
+		if p.currentToken.Type == lexer.NOT_TOKEN {
+			p.nextToken()
+			if p.currentToken.Type != lexer.NULL_TOKEN {
+				p.addError("Expected NULL after IS NOT")
+				return nil
+			}
+			where.Op = "IS NOT NULL"
+		} else if p.currentToken.Type == lexer.NULL_TOKEN {
+			where.Op = "IS NULL"
+		} else {
+			p.addError("Expected NULL or NOT after IS")
+			return nil
+		}
+		return where
+	}
+
+	// LIKE
+	if p.currentToken.Type == lexer.LIKE_TOKEN {
+		where.Op = "LIKE"
+		p.nextToken()
+		if p.currentToken.Type != lexer.STRING && p.currentToken.Type != lexer.IDENTIFIER {
+			p.addError(fmt.Sprintf("Expected pattern after LIKE, got %s", p.currentToken.Value))
+			return nil
+		}
+		where.Right = p.currentToken.Value
+		return where
+	}
+
+	// IN
+	if p.currentToken.Type == lexer.IN_TOKEN {
+		where.Op = "IN"
+		p.nextToken()
+		if p.currentToken.Type != lexer.LPAREN {
+			p.addError("Expected ( after IN")
+			return nil
+		}
+		p.nextToken() // move to first value
+		for {
+			if p.currentToken.Type != lexer.IDENTIFIER && p.currentToken.Type != lexer.NUMBER && p.currentToken.Type != lexer.STRING {
+				p.addError(fmt.Sprintf("Expected value in IN list, got %s", p.currentToken.Value))
+				return nil
+			}
+			where.InList = append(where.InList, p.currentToken.Value)
+			if p.peekToken.Type == lexer.COMMA {
+				p.nextToken() // move to comma
+				p.nextToken() // move to next value
+			} else if p.peekToken.Type == lexer.RPAREN {
+				p.nextToken() // move to )
+				break
+			} else {
+				p.addError("Expected , or ) in IN list")
+				return nil
+			}
+		}
+		return where
+	}
+
+	// BETWEEN
+	if p.currentToken.Type == lexer.BETWEEN_TOKEN {
+		where.Op = "BETWEEN"
+		p.nextToken()
+		if p.currentToken.Type != lexer.NUMBER && p.currentToken.Type != lexer.STRING && p.currentToken.Type != lexer.IDENTIFIER {
+			p.addError(fmt.Sprintf("Expected value after BETWEEN, got %s", p.currentToken.Value))
+			return nil
+		}
+		where.Right = p.currentToken.Value
+		p.nextToken()
+		if p.currentToken.Type != lexer.AND_TOKEN {
+			p.addError(fmt.Sprintf("Expected AND after BETWEEN value, got %s", p.currentToken.Value))
+			return nil
+		}
+		p.nextToken()
+		if p.currentToken.Type != lexer.NUMBER && p.currentToken.Type != lexer.STRING && p.currentToken.Type != lexer.IDENTIFIER {
+			p.addError(fmt.Sprintf("Expected upper bound after AND, got %s", p.currentToken.Value))
+			return nil
+		}
+		where.Right2 = p.currentToken.Value
+		return where
+	}
+
+	// Standard comparison operators (=, !=, >, <, >=, <=)
 	if !isComparisonOperator(p.currentToken.Type) {
 		p.addError(fmt.Sprintf("Expected comparison operator in WHERE clause, got %s", p.currentToken.Value))
 		return nil

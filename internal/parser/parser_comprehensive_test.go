@@ -286,6 +286,9 @@ func TestParseWhereAllOperators(t *testing.T) {
 		{"WHERE id < 1", "<"},
 		{"WHERE id >= 1", ">="},
 		{"WHERE id <= 1", "<="},
+		{"WHERE name LIKE 'A%'", "LIKE"},
+		{"WHERE name IS NULL", "IS NULL"},
+		{"WHERE name IS NOT NULL", "IS NOT NULL"},
 	}
 
 	for _, tt := range inputs {
@@ -304,6 +307,43 @@ func TestParseWhereAllOperators(t *testing.T) {
 		}
 		if stmt.Where.Op != tt.op {
 			t.Errorf("input %q: expected op %q, got %q", input, tt.op, stmt.Where.Op)
+		}
+	}
+}
+
+func TestParseWhereInAndBetween(t *testing.T) {
+	inputs := []struct {
+		clause string
+		op     string
+		check  func(*ast.WhereClause) bool
+	}{
+		{"WHERE id IN (1, 2, 3)", "IN", func(w *ast.WhereClause) bool {
+			return len(w.InList) == 3 && w.InList[0] == "1" && w.InList[1] == "2" && w.InList[2] == "3"
+		}},
+		{"WHERE age BETWEEN 10 AND 20", "BETWEEN", func(w *ast.WhereClause) bool {
+			return w.Right == "10" && w.Right2 == "20"
+		}},
+	}
+
+	for _, tt := range inputs {
+		input := "SELECT * FROM users " + tt.clause
+		l := lexer.New(input)
+		p := New(l)
+		program := p.ParseProgram()
+		checkParserErrors(t, p)
+
+		stmt, ok := program.Statements[0].(*ast.SelectStatement)
+		if !ok {
+			t.Fatalf("input %q: expected *ast.SelectStatement", input)
+		}
+		if stmt.Where == nil {
+			t.Fatalf("input %q: expected where clause", input)
+		}
+		if stmt.Where.Op != tt.op {
+			t.Errorf("input %q: expected op %q, got %q", input, tt.op, stmt.Where.Op)
+		}
+		if !tt.check(stmt.Where) {
+			t.Errorf("input %q: additional check failed (InList=%v Right=%q Right2=%q)", input, stmt.Where.InList, stmt.Where.Right, stmt.Where.Right2)
 		}
 	}
 }

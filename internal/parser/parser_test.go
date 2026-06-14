@@ -132,6 +132,117 @@ func TestParseWhereClause(t *testing.T) {
 	}
 }
 
+func TestParseWhereLike(t *testing.T) {
+	input := "SELECT * FROM users WHERE name LIKE 'john%'"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.SelectStatement)
+	if stmt.Where == nil {
+		t.Fatal("Where clause is nil")
+	}
+	if stmt.Where.Op != "LIKE" {
+		t.Errorf("expected LIKE, got %s", stmt.Where.Op)
+	}
+	if stmt.Where.Right != "john%" {
+		t.Errorf("expected john%%, got %s", stmt.Where.Right)
+	}
+}
+
+func TestParseWhereIn(t *testing.T) {
+	input := "SELECT * FROM users WHERE id IN (1, 2, 3)"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.SelectStatement)
+	if stmt.Where == nil {
+		t.Fatal("Where clause is nil")
+	}
+	if stmt.Where.Op != "IN" {
+		t.Errorf("expected IN, got %s", stmt.Where.Op)
+	}
+	if len(stmt.Where.InList) != 3 || stmt.Where.InList[0] != "1" || stmt.Where.InList[1] != "2" || stmt.Where.InList[2] != "3" {
+		t.Errorf("IN list mismatch: %v", stmt.Where.InList)
+	}
+}
+
+func TestParseWhereBetween(t *testing.T) {
+	input := "SELECT * FROM users WHERE id BETWEEN 10 AND 20"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.SelectStatement)
+	if stmt.Where == nil {
+		t.Fatal("Where clause is nil")
+	}
+	if stmt.Where.Op != "BETWEEN" {
+		t.Errorf("expected BETWEEN, got %s", stmt.Where.Op)
+	}
+	if stmt.Where.Right != "10" {
+		t.Errorf("expected 10, got %s", stmt.Where.Right)
+	}
+	if stmt.Where.Right2 != "20" {
+		t.Errorf("expected 20, got %s", stmt.Where.Right2)
+	}
+}
+
+func TestParseWhereIsNull(t *testing.T) {
+	input := "SELECT * FROM users WHERE email IS NULL"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.SelectStatement)
+	if stmt.Where == nil {
+		t.Fatal("Where clause is nil")
+	}
+	if stmt.Where.Op != "IS NULL" {
+		t.Errorf("expected IS NULL, got %s", stmt.Where.Op)
+	}
+}
+
+func TestParseWhereIsNotNull(t *testing.T) {
+	input := "SELECT * FROM users WHERE email IS NOT NULL"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.SelectStatement)
+	if stmt.Where == nil {
+		t.Fatal("Where clause is nil")
+	}
+	if stmt.Where.Op != "IS NOT NULL" {
+		t.Errorf("expected IS NOT NULL, got %s", stmt.Where.Op)
+	}
+}
+
+func TestParseSelectDistinct(t *testing.T) {
+	input := "SELECT DISTINCT name FROM users"
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.SelectStatement)
+	if !stmt.Distinct {
+		t.Error("expected Distinct to be true")
+	}
+	if len(stmt.Columns) != 1 || stmt.Columns[0] != "name" {
+		t.Errorf("columns mismatch: %v", stmt.Columns)
+	}
+	if stmt.Table != "users" {
+		t.Errorf("expected users, got %s", stmt.Table)
+	}
+}
+
 func TestParseInsertStatement(t *testing.T) {
 	input := "INSERT INTO users (name, age) VALUES (john, 30)"
 	l := lexer.New(input)

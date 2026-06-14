@@ -15,6 +15,7 @@ type ColumnDefinition struct {
 	IsNullable   bool
 	IsUnique     bool
 	IsPrimaryKey bool
+	Default      string // empty if no default
 	References   *ForeignKeyRef // nil if not a FK
 }
 

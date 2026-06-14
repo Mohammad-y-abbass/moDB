@@ -15,14 +15,15 @@ type SortExpression struct {
 }
 
 type SelectStatement struct {
-	Token   lexer.Token
-	Columns []string
-	Table   string
-	Join    *JoinClause // nil for plain SELECT
-	Where   *WhereClause
-	OrderBy []SortExpression
-	Limit   int // -1 means no limit
-	Offset  int // 0 means no offset
+	Token    lexer.Token
+	Distinct bool
+	Columns  []string
+	Table    string
+	Join     *JoinClause // nil for plain SELECT
+	Where    *WhereClause
+	OrderBy  []SortExpression
+	Limit    int // -1 means no limit
+	Offset   int // 0 means no offset
 }
 
 func (ss *SelectStatement) StatementNode() {}
